@@ -1,0 +1,143 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "NEAR Connect",
+  "projectDescription": "An easily upgradeable, secure and lightweight wallet connector for the NEAR blockchain",
+  "theme": "palm",
+  "primaryColor": "#00D4AA",
+  "lightColor": "#70E4C8",
+  "darkColor": "#00A085",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/wallet-types",
+              "concepts/security-model",
+              "concepts/events"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/dapp-integration",
+              "guides/sign-in",
+              "guides/sign-transactions",
+              "guides/sign-messages",
+              "guides/walletconnect",
+              "guides/event-handling",
+              "guides/network-switching"
+            ]
+          },
+          {
+            "group": "Wallet Integration",
+            "pages": [
+              "wallet-integration/overview",
+              "wallet-integration/creating-executor",
+              "wallet-integration/manifest-format",
+              "wallet-integration/sandbox-api",
+              "wallet-integration/injected-wallets",
+              "wallet-integration/testing"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/plugin-system",
+              "advanced/custom-storage",
+              "advanced/branding",
+              "advanced/debugging"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "api/near-connector",
+              "api/wallet-base"
+            ]
+          },
+          {
+            "group": "Wallet Classes",
+            "pages": [
+              "api/sandbox-wallet",
+              "api/injected-wallet",
+              "api/parent-frame-wallet"
+            ]
+          },
+          {
+            "group": "Types",
+            "pages": [
+              "api/types/accounts",
+              "api/types/signing",
+              "api/types/transactions",
+              "api/types/events",
+              "api/types/manifest"
+            ]
+          },
+          {
+            "group": "Actions",
+            "pages": [
+              "api/actions/overview",
+              "api/actions/function-call",
+              "api/actions/transfer",
+              "api/actions/key-management"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Zero dependencies, lightweight wallet connector",
+    "Secure sandboxed execution environment for wallet code",
+    "Easily updatable wallets via manifest system",
+    "Support for 10+ NEAR wallets including HOT, Meteor, MyNearWallet",
+    "WalletConnect integration for mobile wallets",
+    "Injected wallet support for browser extensions",
+    "Sign messages, transactions, and delegate actions",
+    "Event-driven architecture for wallet state changes",
+    "Plugin system for extending wallet functionality",
+    "Network switching between mainnet and testnet"
+  ],
+  "publicApiSurface": [
+    "NearConnector - Main connector class",
+    "SandboxWallet - Sandboxed wallet implementation",
+    "InjectedWallet - Browser extension wallet implementation",
+    "ParentFrameWallet - Parent frame wallet implementation",
+    "connect() - Initialize wallet connection",
+    "disconnect() - Disconnect from wallet",
+    "wallet() - Get current wallet instance",
+    "signIn() - Sign in to wallet",
+    "signInAndSignMessage() - Sign in with message signing",
+    "signOut() - Sign out from wallet",
+    "signMessage() - Sign arbitrary message",
+    "signAndSendTransaction() - Sign and send transaction",
+    "signAndSendTransactions() - Sign and send multiple transactions",
+    "signDelegateActions() - Sign delegate actions",
+    "getAccounts() - Get connected accounts",
+    "on() - Listen to events",
+    "use() - Apply wallet plugin",
+    "nearActionsToConnectorActions() - Convert NEAR API actions",
+    "WalletManifest - Wallet configuration type",
+    "NearWalletBase - Base wallet interface",
+    "SignMessageParams - Message signing parameters",
+    "SignedMessage - Signed message result",
+    "ConnectorAction - Transaction action types"
+  ]
+}
