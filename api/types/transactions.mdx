@@ -1,0 +1,177 @@
+---
+title: Transaction Types
+description: Type definitions for transaction signing and execution in NEAR Connect
+---
+
+## SignAndSendTransactionParams
+
+Parameters for signing and sending a single transaction to the NEAR network.
+
+<ResponseField name="receiverId" type="string" required>
+  The account ID that will receive and execute the transaction
+</ResponseField>
+
+<ResponseField name="actions" type="Array<Action | ConnectorAction>" required>
+  Array of actions to include in the transaction. Actions can be NEAR protocol actions (transfer, function call, etc.) or connector-specific actions.
+</ResponseField>
+
+<ResponseField name="network" type="Network">
+  The NEAR network to use. Can be `"mainnet"` or `"testnet"`. If not specified, uses the current network.
+</ResponseField>
+
+<ResponseField name="signerId" type="string">
+  The account ID to sign the transaction with. If not specified, uses the currently connected account.
+</ResponseField>
+
+### Example
+
+```typescript
+import { actions } from "@near-js/transactions";
+
+const params: SignAndSendTransactionParams = {
+  receiverId: "contract.near",
+  actions: [
+    actions.functionCall(
+      "submit_data",
+      { data: "hello" },
+      BigInt(30000000000000), // 30 TGas
+      BigInt(0) // no deposit
+    )
+  ],
+  network: "mainnet",
+  signerId: "alice.near"
+};
+
+const outcome = await wallet.signAndSendTransaction(params);
+console.log("Transaction hash:", outcome.transaction.hash);
+```
+
+## SignAndSendTransactionsParams
+
+Parameters for signing and sending multiple transactions in a batch to the NEAR network.
+
+<ResponseField name="transactions" type="Array<{ receiverId: string; actions: Array<Action | ConnectorAction> }>" required>
+  Array of transaction objects, each containing:
+  - `receiverId`: The account ID that will receive and execute the transaction
+  - `actions`: Array of actions to include in the transaction
+</ResponseField>
+
+<ResponseField name="network" type="Network">
+  The NEAR network to use. Can be `"mainnet"` or `"testnet"`. If not specified, uses the current network.
+</ResponseField>
+
+<ResponseField name="signerId" type="string">
+  The account ID to sign all transactions with. If not specified, uses the currently connected account.
+</ResponseField>
+
+### Example
+
+```typescript
+import { actions } from "@near-js/transactions";
+
+const params: SignAndSendTransactionsParams = {
+  transactions: [
+    {
+      receiverId: "token.near",
+      actions: [
+        actions.functionCall(
+          "ft_transfer",
+          { receiver_id: "bob.near", amount: "1000" },
+          BigInt(30000000000000),
+          BigInt(1)
+        )
+      ]
+    },
+    {
+      receiverId: "contract.near",
+      actions: [
+        actions.functionCall(
+          "register_transfer",
+          { from: "alice.near", to: "bob.near" },
+          BigInt(30000000000000),
+          BigInt(0)
+        )
+      ]
+    }
+  ],
+  network: "mainnet",
+  signerId: "alice.near"
+};
+
+const outcomes = await wallet.signAndSendTransactions(params);
+outcomes.forEach((outcome, i) => {
+  console.log(`Transaction ${i} hash:`, outcome.transaction.hash);
+});
+```
+
+## SignDelegateActionsParams
+
+Parameters for signing delegate actions (meta-transactions) that can be executed by a relayer on behalf of the user.
+
+<ResponseField name="delegateActions" type="Array<{ receiverId: string; actions: Array<Action | ConnectorAction> }>" required>
+  Array of delegate action objects, each containing:
+  - `receiverId`: The account ID that will receive and execute the actions
+  - `actions`: Array of actions to be delegated
+</ResponseField>
+
+<ResponseField name="network" type="Network">
+  The NEAR network to use. Can be `"mainnet"` or `"testnet"`. If not specified, uses the current network.
+</ResponseField>
+
+<ResponseField name="signerId" type="string">
+  The account ID to sign the delegate actions with. If not specified, uses the currently connected account.
+</ResponseField>
+
+### Example
+
+```typescript
+import { actions } from "@near-js/transactions";
+
+const params: SignDelegateActionsParams = {
+  delegateActions: [
+    {
+      receiverId: "contract.near",
+      actions: [
+        actions.functionCall(
+          "submit_data",
+          { data: "hello" },
+          BigInt(30000000000000),
+          BigInt(0)
+        )
+      ]
+    }
+  ],
+  network: "mainnet",
+  signerId: "alice.near"
+};
+
+const response = await wallet.signDelegateActions(params);
+const { signedDelegateActions } = response;
+
+// Send to relayer
+await relayer.execute(signedDelegateActions);
+```
+
+## Related Types
+
+### FinalExecutionOutcome
+
+Returned by `signAndSendTransaction` and `signAndSendTransactions`. This type is from `@near-js/types` and contains:
+
+- `transaction`: Transaction details including hash and signature
+- `receipts`: Array of receipt objects
+- `receipts_outcome`: Array of receipt execution outcomes
+- `status`: Transaction status (success or failure)
+
+### Action
+
+The base NEAR protocol action type from `@near-js/transactions`. Common actions include:
+
+- `functionCall()`: Call a smart contract method
+- `transfer()`: Transfer NEAR tokens
+- `addKey()`: Add an access key
+- `deleteKey()`: Delete an access key
+- `createAccount()`: Create a new account
+- `deleteAccount()`: Delete an account
+- `stake()`: Stake tokens
+- `deployContract()`: Deploy a smart contract

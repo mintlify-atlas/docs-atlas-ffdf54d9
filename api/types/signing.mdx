@@ -1,0 +1,135 @@
+---
+title: Signing Types
+description: Type definitions for message signing and authentication in NEAR Connect
+---
+
+## SignMessageParams
+
+Parameters required to sign an arbitrary message with a NEAR account.
+
+<ResponseField name="message" type="string" required>
+  The message content to be signed
+</ResponseField>
+
+<ResponseField name="recipient" type="string" required>
+  The intended recipient of the signed message (typically a contract or service identifier)
+</ResponseField>
+
+<ResponseField name="nonce" type="Uint8Array" required>
+  A unique nonce to prevent replay attacks. Should be a 32-byte array.
+</ResponseField>
+
+<ResponseField name="network" type="Network">
+  The NEAR network to use. Can be `"mainnet"` or `"testnet"`. If not specified, uses the current network.
+</ResponseField>
+
+<ResponseField name="signerId" type="string">
+  The account ID to sign with. If not specified, uses the currently connected account.
+</ResponseField>
+
+### Example
+
+```typescript
+const params: SignMessageParams = {
+  message: "Verify my account ownership",
+  recipient: "app.near",
+  nonce: new Uint8Array(32),
+  network: "mainnet",
+  signerId: "alice.near"
+};
+
+const signed = await wallet.signMessage(params);
+```
+
+## SignedMessage
+
+The result of signing a message, containing the signature and account information.
+
+<ResponseField name="accountId" type="string" required>
+  The account ID that signed the message
+</ResponseField>
+
+<ResponseField name="publicKey" type="string" required>
+  The public key used to sign the message, in base58 format
+</ResponseField>
+
+<ResponseField name="signature" type="string" required>
+  The cryptographic signature of the message, in base58 format with algorithm prefix (e.g., "ed25519:...")
+</ResponseField>
+
+### Example
+
+```typescript
+const signedMessage: SignedMessage = {
+  accountId: "alice.near",
+  publicKey: "ed25519:5Z7g8f9qwer...",
+  signature: "ed25519:3N9w4h5tjkl..."
+};
+
+// Verify the signature on your backend
+const isValid = await verifySignature(signedMessage);
+```
+
+## SignInParams
+
+Parameters for signing in to a NEAR wallet.
+
+<ResponseField name="network" type="Network">
+  The NEAR network to connect to. Can be `"mainnet"` or `"testnet"`. Defaults to the wallet's current network.
+</ResponseField>
+
+<ResponseField name="contractId" type="string">
+  Optional contract ID to request function call access for. If provided, an access key will be created.
+</ResponseField>
+
+<ResponseField name="methodNames" type="string[]">
+  Array of method names that the access key will be allowed to call. Only valid when `contractId` is specified.
+</ResponseField>
+
+### Example
+
+```typescript
+// Simple sign in
+const accounts = await wallet.signIn();
+
+// Sign in with contract access
+const accounts = await wallet.signIn({
+  network: "mainnet",
+  contractId: "app.near",
+  methodNames: ["submit_data", "get_status"]
+});
+```
+
+## SignMessageDuringSignInParams
+
+A subset of `SignMessageParams` used when signing a message during the sign-in process. Omits `signerId` and `network` as these are determined by the sign-in context.
+
+<ResponseField name="message" type="string" required>
+  The message content to be signed
+</ResponseField>
+
+<ResponseField name="recipient" type="string" required>
+  The intended recipient of the signed message
+</ResponseField>
+
+<ResponseField name="nonce" type="Uint8Array" required>
+  A unique nonce to prevent replay attacks. Should be a 32-byte array.
+</ResponseField>
+
+### Example
+
+```typescript
+const connector = await nearConnect({
+  walletId: "my-wallet",
+  signMessageParams: {
+    message: "Authenticate to my app",
+    recipient: "app.near",
+    nonce: new Uint8Array(32)
+  }
+});
+
+connector.on("wallet:signInAndSignMessage", ({ accounts }) => {
+  // accounts includes the signed message
+  console.log(accounts[0].signedMessage);
+});
+```

@@ -1,0 +1,429 @@
+---
+title: 'Sign In Users'
+description: 'Guide for signing in users with NEAR Connect, including standard sign-in and signInAndSignMessage'
+---
+
+## Overview
+
+NEAR Connect provides multiple ways to authenticate users with their NEAR wallets. This guide covers all sign-in methods, from basic authentication to advanced patterns.
+
+## Basic Sign In
+
+The simplest way to sign in a user is with the `connect()` method:
+
+```typescript
+import { NearConnector } from "@hot-labs/near-connect";
+
+const connector = new NearConnector();
+
+// Opens wallet selector and signs in
+await connector.connect();
+```
+
+This will:
+1. Open the wallet selector popup
+2. Allow the user to choose their wallet
+3. Complete the sign-in flow
+4. Emit the `wallet:signIn` event
+
+## Listening for Sign In Events
+
+<Steps>
+  <Step title="Set up the event listener">
+    Register a callback for the `wallet:signIn` event:
+
+    ```typescript
+    connector.on("wallet:signIn", async (event) => {
+      const wallet = await connector.wallet();
+      const accountId = event.accounts[0].accountId;
+      const publicKey = event.accounts[0].publicKey;
+      
+      console.log(`Signed in: ${accountId}`);
+      console.log(`Public key: ${publicKey}`);
+    });
+    ```
+  </Step>
+
+  <Step title="Check the sign-in source">
+    The event includes a `source` field to identify how the user signed in:
+
+    ```typescript
+    connector.on("wallet:signIn", async (event) => {
+      if (event.source === "signIn") {
+        console.log("Standard sign-in");
+      } else if (event.source === "signInAndSignMessage") {
+        console.log("Sign-in with message");
+      }
+    });
+    ```
+  </Step>
+
+  <Step title="Access account information">
+    The event provides account details:
+
+    ```typescript
+    connector.on("wallet:signIn", async (event) => {
+      // Access all connected accounts
+      event.accounts.forEach((account) => {
+        console.log(`Account: ${account.accountId}`);
+        console.log(`Public Key: ${account.publicKey}`);
+      });
+    });
+    ```
+  </Step>
+</Steps>
+
+## Sign In with Message
+
+For enhanced security, you can request a signed message during sign-in. This proves ownership of the account without an additional step.
+
+### Use Case
+
+This is ideal for:
+- Secure authentication flows
+- Proving account ownership immediately
+- Backend verification during login
+- Challenge-response authentication
+
+### Implementation
+
+<CodeGroup>
+```typescript Basic
+const nonce = new Uint8Array(crypto.getRandomValues(new Uint8Array(32)));
+
+await connector.connect({
+  signMessageParams: {
+    message: "Sign in to My dApp",
+    recipient: "My dApp",
+    nonce,
+  },
+});
+```
+
+```typescript React
+import { useState } from "react";
+import { NearConnector } from "@hot-labs/near-connect";
+
+export function SignInButton() {
+  const [connector] = useState(() => new NearConnector());
+
+  const handleSignIn = async () => {
+    const nonce = new Uint8Array(
+      window.crypto.getRandomValues(new Uint8Array(32))
+    );
+
+    await connector.connect({
+      signMessageParams: {
+        message: "Sign in to Example App",
+        recipient: "Demo app",
+        nonce,
+      },
+    });
+  };
+
+  return <button onClick={handleSignIn}>Sign In with Message</button>;
+}
+```
+</CodeGroup>
+
+### Handling Signed Messages
+
+When using `signMessageParams`, listen for both events:
+
+```typescript
+// This event includes the signed message
+connector.on("wallet:signInAndSignMessage", async (event) => {
+  event.accounts.forEach((account) => {
+    console.log(`Account: ${account.accountId}`);
+    console.log(`Signature: ${account.signedMessage.signature}`);
+    console.log(`Public Key: ${account.signedMessage.publicKey}`);
+    
+    // Send to your backend for verification
+    await verifySignature(account.signedMessage);
+  });
+});
+
+// This event is also emitted with source "signInAndSignMessage"
+connector.on("wallet:signIn", async (event) => {
+  console.log(`Sign-in source: ${event.source}`);
+});
+```
+
+<Note>
+When using `signMessageParams`, both `wallet:signInAndSignMessage` and `wallet:signIn` events are emitted. The `wallet:signIn` event will have `source` set to `"signInAndSignMessage"`.
+</Note>
+
+## Sign In with Limited Access Key
+
+<Warning>
+This feature is deprecated. Adding a limited-access key during sign-in requires an on-chain transaction, which may negatively affect user experience.
+</Warning>
+
+Some wallets allow adding a limited-access key during connection. This enables signing non-payable transactions without wallet approval each time:
+
+```typescript
+const connector = new NearConnector({
+  signIn: {
+    contractId: "game.near",
+    methodNames: ["play", "claim_reward"],
+  },
+});
+
+await connector.connect();
+```
+
+<Tip>
+**Best Practice**: Add limited-access keys after the user has started interacting with your application, not during initial sign-in.
+</Tip>
+
+### Example: Add Key After Sign In
+
+```typescript
+import { NearConnector } from "@hot-labs/near-connect";
+
+const connector = new NearConnector();
+
+// Sign in first (no key)
+await connector.connect();
+
+// Later, after user interaction, add a limited key
+const wallet = await connector.wallet();
+const accounts = await wallet.getAccounts();
+
+await wallet.signAndSendTransaction({
+  receiverId: accounts[0].accountId,
+  actions: [{
+    type: "AddKey",
+    params: {
+      publicKey: "ed25519:...",
+      accessKey: {
+        nonce: 0,
+        permission: {
+          receiverId: "game.near",
+          methodNames: ["play", "claim_reward"],
+        },
+      },
+    },
+  }],
+});
+```
+
+## Checking Connection Status
+
+Check if a user is already connected:
+
+```typescript
+try {
+  const { wallet, accounts } = await connector.getConnectedWallet();
+  console.log(`Connected: ${accounts[0].accountId}`);
+} catch (error) {
+  console.log("Not connected");
+}
+```
+
+## Specifying a Wallet
+
+Connect to a specific wallet without showing the selector:
+
+```typescript
+// Connect to a specific wallet by ID
+await connector.connect({ walletId: "hot-wallet" });
+```
+
+## Auto-Connect Behavior
+
+By default, NEAR Connect automatically reconnects users on page load:
+
+```typescript
+const connector = new NearConnector({
+  autoConnect: true, // Default
+});
+```
+
+To disable auto-connect:
+
+```typescript
+const connector = new NearConnector({
+  autoConnect: false,
+});
+
+// Manually check and connect
+try {
+  await connector.getConnectedWallet();
+  // User was previously connected
+} catch {
+  // Show connect button
+}
+```
+
+## Complete Example
+
+<CodeGroup>
+```tsx React with TypeScript
+import { FC, useState, useEffect } from "react";
+import {
+  NearConnector,
+  AccountWithSignedMessage,
+} from "@hot-labs/near-connect";
+
+export const AuthComponent: FC = () => {
+  const [connector] = useState(() => new NearConnector());
+  const [account, setAccount] = useState<string | undefined>();
+  const [signedMessage, setSignedMessage] = useState<any>();
+
+  useEffect(() => {
+    // Handle standard sign-in
+    connector.on("wallet:signIn", async (event) => {
+      setAccount(event.accounts[0].accountId);
+    });
+
+    // Handle sign-in with message
+    connector.on("wallet:signInAndSignMessage", async (event) => {
+      const account = event.accounts[0];
+      setAccount(account.accountId);
+      setSignedMessage(account.signedMessage);
+      
+      // Verify with backend
+      await fetch("/api/verify", {
+        method: "POST",
+        body: JSON.stringify(account.signedMessage),
+      });
+    });
+
+    connector.on("wallet:signOut", () => {
+      setAccount(undefined);
+      setSignedMessage(undefined);
+    });
+
+    // Check existing connection
+    connector.getConnectedWallet()
+      .then(({ accounts }) => setAccount(accounts[0].accountId))
+      .catch(() => {});
+  }, [connector]);
+
+  const handleBasicSignIn = async () => {
+    await connector.connect();
+  };
+
+  const handleSignInWithMessage = async () => {
+    const nonce = new Uint8Array(
+      window.crypto.getRandomValues(new Uint8Array(32))
+    );
+
+    await connector.connect({
+      signMessageParams: {
+        message: "Sign in to Example App",
+        recipient: "Demo app",
+        nonce,
+      },
+    });
+  };
+
+  const handleSignOut = async () => {
+    await connector.disconnect();
+  };
+
+  if (account) {
+    return (
+      <div>
+        <p>Connected: {account}</p>
+        {signedMessage && (
+          <p>Signature: {signedMessage.signature.slice(0, 20)}...</p>
+        )}
+        <button onClick={handleSignOut}>Sign Out</button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <button onClick={handleBasicSignIn}>Sign In</button>
+      <button onClick={handleSignInWithMessage}>
+        Sign In with Message
+      </button>
+    </div>
+  );
+};
+```
+
+```typescript Node.js Backend Verification
+import { verifySignature } from "@near-js/crypto";
+import { PublicKey } from "@near-js/crypto";
+
+interface SignedMessage {
+  accountId: string;
+  publicKey: string;
+  signature: string;
+}
+
+export async function verifySignedMessage(
+  signedMessage: SignedMessage,
+  expectedMessage: string,
+  expectedRecipient: string,
+  expectedNonce: Uint8Array
+): Promise<boolean> {
+  try {
+    const publicKey = PublicKey.from(signedMessage.publicKey);
+    
+    // Reconstruct the message payload
+    const payload = JSON.stringify({
+      message: expectedMessage,
+      recipient: expectedRecipient,
+      nonce: Array.from(expectedNonce),
+    });
+    
+    const payloadHash = new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload))
+    );
+    
+    // Verify the signature
+    const signature = Buffer.from(signedMessage.signature, "base64");
+    return verifySignature(payloadHash, signature, publicKey);
+  } catch (error) {
+    console.error("Verification failed:", error);
+    return false;
+  }
+}
+```
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use signInAndSignMessage for secure auth">
+    When building authentication systems, use `signInAndSignMessage` to verify account ownership immediately. This eliminates the need for additional verification steps.
+  </Accordion>
+
+  <Accordion title="Store nonce securely">
+    Always generate a random nonce for each sign-in request and store it securely (e.g., in session storage) to prevent replay attacks.
+  </Accordion>
+
+  <Accordion title="Verify signatures on the backend">
+    Never trust client-side signature verification alone. Always verify signed messages on your backend server.
+  </Accordion>
+
+  <Accordion title="Handle both sign-in events">
+    When using `signInAndSignMessage`, handle both the `wallet:signIn` and `wallet:signInAndSignMessage` events to ensure your UI updates correctly.
+  </Accordion>
+
+  <Accordion title="Don't add keys during initial sign-in">
+    Avoid adding limited-access keys during the initial sign-in flow. This requires an on-chain transaction and creates friction. Add keys after users start using your app.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Sign Transactions" icon="signature" href="/guides/sign-transactions">
+    Learn how to sign and send transactions
+  </Card>
+  <Card title="Sign Messages" icon="message" href="/guides/sign-messages">
+    Sign arbitrary messages for verification
+  </Card>
+  <Card title="Event Handling" icon="bolt" href="/guides/event-handling">
+    Handle all wallet events in your application
+  </Card>
+  <Card title="Network Switching" icon="arrows-rotate" href="/guides/network-switching">
+    Switch between mainnet and testnet
+  </Card>
+</CardGroup>

@@ -1,0 +1,401 @@
+---
+title: Wallet Types
+description: Understanding the three wallet types in NEAR Connect - SandboxWallet, InjectedWallet, and ParentFrameWallet
+---
+
+## Overview
+
+NEAR Connect supports three distinct wallet types, each designed for different integration scenarios:
+
+<CardGroup cols={3}>
+  <Card title="SandboxWallet" icon="box" color="#00D4AA">
+    Wallets running in sandboxed iframes with controlled permissions
+  </Card>
+  <Card title="InjectedWallet" icon="arrow-down-to-bracket" color="#70E4C8">
+    Browser extension wallets injected into the page context
+  </Card>
+  <Card title="ParentFrameWallet" icon="window" color="#00A085">
+    Wallets available in parent frames (for embedded dApps)
+  </Card>
+</CardGroup>
+
+## SandboxWallet
+
+The most common wallet type - executes wallet code in an isolated iframe sandbox.
+
+### How It Works
+
+<Steps>
+  <Step title="Load Executor Code">
+    Fetch wallet JavaScript from the executor URL defined in the manifest
+  </Step>
+  <Step title="Create Sandboxed Iframe">
+    Generate an iframe with strict Content Security Policy
+  </Step>
+  <Step title="Inject Runtime">
+    Inject `window.selector` API for controlled host communication
+  </Step>
+  <Step title="Execute Methods">
+    Use postMessage to communicate with the sandboxed code
+  </Step>
+</Steps>
+
+### Implementation
+
+```typescript src/SandboxedWallet/index.ts
+export class SandboxWallet {
+  executor: SandboxExecutor;
+
+  constructor(
+    readonly connector: NearConnector,
+    readonly manifest: WalletManifest
+  ) {
+    this.executor = new SandboxExecutor(connector, manifest);
+  }
+
+  async signIn(data?: {
+    network?: Network;
+    contractId?: string;
+    methodNames?: Array<string>;
+  }): Promise<Array<Account>> {
+    return this.executor.call('wallet:signIn', {
+      network: data?.network || this.connector.network,
+      contractId: data?.contractId,
+      methodNames: data?.methodNames,
+    });
+  }
+
+  async signAndSendTransaction(
+    params: SignAndSendTransactionParams
+  ): Promise<FinalExecutionOutcome> {
+    const actions = nearActionsToConnectorActions(params.actions);
+    const args = {
+      ...params,
+      actions,
+      network: params.network || this.connector.network
+    };
+    return this.executor.call('wallet:signAndSendTransaction', args);
+  }
+}
+```
+
+### Sandbox Environment
+
+The iframe sandbox has limited permissions:
+
+```typescript src/SandboxedWallet/iframe.ts
+const iframeAllowedPermissions = [];
+if (this.executor.checkPermissions('usb')) {
+  iframeAllowedPermissions.push('usb *;');
+}
+if (this.executor.checkPermissions('hid')) {
+  iframeAllowedPermissions.push('hid *;');
+}
+if (this.executor.checkPermissions('clipboardRead')) {
+  iframeAllowedPermissions.push('clipboard-read;');
+}
+if (this.executor.checkPermissions('clipboardWrite')) {
+  iframeAllowedPermissions.push('clipboard-write;');
+}
+this.iframe.allow = iframeAllowedPermissions.join(' ');
+this.iframe.setAttribute('sandbox', 'allow-scripts');
+```
+
+<Info>
+  The `allow-scripts` sandbox flag permits JavaScript execution while blocking forms, popups, and same-origin access.
+</Info>
+
+### Available Methods
+
+All wallet types implement the same interface:
+
+<AccordionGroup>
+  <Accordion title="signIn">
+    ```typescript
+    async signIn(data?: {
+      network?: Network;
+      contractId?: string;
+      methodNames?: Array<string>;
+    }): Promise<Array<Account>>
+    ```
+    Sign in and optionally add a function call access key.
+  </Accordion>
+  
+  <Accordion title="signInAndSignMessage">
+    ```typescript
+    async signInAndSignMessage(
+      data: SignInAndSignMessageParams
+    ): Promise<Array<AccountWithSignedMessage>>
+    ```
+    Sign in and immediately sign a message for verification.
+  </Accordion>
+  
+  <Accordion title="signOut">
+    ```typescript
+    async signOut(data?: { network?: Network }): Promise<void>
+    ```
+    Sign out and clear stored credentials.
+  </Accordion>
+  
+  <Accordion title="getAccounts">
+    ```typescript
+    async getAccounts(
+      data?: { network?: Network }
+    ): Promise<Array<Account>>
+    ```
+    Retrieve connected accounts without re-authentication.
+  </Accordion>
+  
+  <Accordion title="signAndSendTransaction">
+    ```typescript
+    async signAndSendTransaction(
+      params: SignAndSendTransactionParams
+    ): Promise<FinalExecutionOutcome>
+    ```
+    Sign and broadcast a transaction to the network.
+  </Accordion>
+  
+  <Accordion title="signAndSendTransactions">
+    ```typescript
+    async signAndSendTransactions(
+      params: SignAndSendTransactionsParams
+    ): Promise<Array<FinalExecutionOutcome>>
+    ```
+    Sign and broadcast multiple transactions.
+  </Accordion>
+  
+  <Accordion title="signMessage">
+    ```typescript
+    async signMessage(
+      params: SignMessageParams
+    ): Promise<SignedMessage>
+    ```
+    Sign an off-chain message for verification.
+  </Accordion>
+  
+  <Accordion title="signDelegateActions">
+    ```typescript
+    async signDelegateActions(
+      params: SignDelegateActionsParams
+    ): Promise<SignDelegateActionsResponse>
+    ```
+    Sign delegated actions (meta-transactions).
+  </Accordion>
+</AccordionGroup>
+
+### Example Manifest
+
+```json repository/manifest.json
+{
+  "id": "meteor-wallet",
+  "name": "Meteor Wallet",
+  "icon": "https://example.com/icon.svg",
+  "description": "The most simple and secure wallet",
+  "website": "https://meteorwallet.app/",
+  "version": "1.1.0",
+  "executor": "https://example.com/meteor-wallet.js",
+  "type": "sandbox",
+  "features": {
+    "signMessage": true,
+    "signInWithoutAddKey": true,
+    "signAndSendTransaction": true,
+    "signAndSendTransactions": true,
+    "signDelegateActions": true,
+    "mainnet": true,
+    "testnet": true
+  },
+  "permissions": {
+    "storage": true,
+    "allowsOpen": [
+      "https://wallet.meteorwallet.app"
+    ],
+    "external": ["meteorCom", "meteorComV2"]
+  }
+}
+```
+
+## InjectedWallet
+
+Browser extension wallets that inject themselves into the page.
+
+### Detection
+
+Injected wallets announce their presence via custom events:
+
+```typescript src/NearConnector.ts
+if (typeof window !== 'undefined') {
+  window.addEventListener<any>(
+    'near-wallet-injected',
+    this._handleNearWalletInjected
+  );
+  window.dispatchEvent(new Event('near-selector-ready'));
+}
+```
+
+### Event Handler
+
+```typescript src/NearConnector.ts
+private _handleNearWalletInjected = (
+  event: EventNearWalletInjected
+) => {
+  this.wallets = this.wallets.filter(
+    (wallet) => wallet.manifest.id !== event.detail.manifest.id
+  );
+  this.wallets.unshift(new InjectedWallet(this, event.detail as any));
+  this.events.emit('selector:walletsChanged', {});
+};
+```
+
+<Note>
+  Injected wallets replace any sandbox version of the same wallet ID, providing a native experience when extensions are installed.
+</Note>
+
+### Implementation
+
+```typescript src/InjectedWallet.ts
+export class InjectedWallet {
+  constructor(
+    readonly connector: NearConnector,
+    readonly wallet: NearWalletBase
+  ) {}
+
+  get manifest() {
+    return this.wallet.manifest;
+  }
+
+  async signIn(data?: {
+    network?: Network;
+    contractId?: string;
+    methodNames?: Array<string>;
+  }): Promise<Array<Account>> {
+    return this.wallet.signIn({
+      network: data?.network || this.connector.network,
+      contractId: data?.contractId,
+      methodNames: data?.methodNames,
+    });
+  }
+
+  async signAndSendTransaction(
+    params: SignAndSendTransactionParams
+  ): Promise<FinalExecutionOutcome> {
+    const actions = nearActionsToConnectorActions(params.actions);
+    const network = params.network || this.connector.network;
+
+    const result = await this.wallet.signAndSendTransaction({
+      ...params,
+      actions,
+      network
+    });
+    
+    if (!result) throw new Error('No result from wallet');
+
+    // Handle legacy wallet response format
+    if (Array.isArray(result.transactions)) {
+      return result.transactions[0];
+    }
+    return result;
+  }
+}
+```
+
+<Warning>
+  InjectedWallet wraps the injected wallet object and normalizes responses since extensions may use different response formats.
+</Warning>
+
+## ParentFrameWallet
+
+Allows embedded dApps to use wallets from parent frames.
+
+### Use Case
+
+<Card title="Telegram Mini Apps" icon="telegram">
+  A dApp embedded in a Telegram bot can use the parent frame's wallet without requiring the user to install a separate extension.
+</Card>
+
+### Communication
+
+Uses postMessage for cross-frame communication:
+
+```typescript src/ParentFrameWallet.ts
+export class ParentFrameWallet {
+  constructor(
+    readonly connector: NearConnector,
+    readonly manifest: WalletManifest
+  ) {}
+
+  callParentFrame(method: string, params: any) {
+    const id = uuid4();
+    window.parent.postMessage(
+      { type: 'near-wallet-injected-request', id, method, params },
+      '*'
+    );
+
+    return new Promise((resolve, reject) => {
+      const handler = (event: MessageEvent) => {
+        if (
+          event.data.type === 'near-wallet-injected-response' &&
+          event.data.id === id
+        ) {
+          window.removeEventListener('message', handler);
+          if (event.data.success) resolve(event.data.result);
+          else reject(event.data.error);
+        }
+      };
+
+      window.addEventListener('message', handler);
+    });
+  }
+}
+```
+
+### Registration
+
+```typescript src/NearConnector.ts
+window.addEventListener('message', async (event) => {
+  if (event.data.type === 'near-wallet-injected') {
+    await this.whenManifestLoaded;
+
+    this.wallets = this.wallets.filter(
+      (wallet) => wallet.manifest.id !== event.data.manifest.id
+    );
+    this.wallets.unshift(
+      new ParentFrameWallet(this, event.data.manifest)
+    );
+    this.events.emit('selector:walletsChanged', {});
+
+    if (this.autoConnect) {
+      this.connect({ walletId: event.data.manifest.id });
+    }
+  }
+});
+```
+
+<Info>
+  Parent frame wallets can auto-connect when detected, providing seamless integration for embedded dApps.
+</Info>
+
+### Security
+
+<Warning>
+  ParentFrameWallet uses `postMessage` with wildcard origin (`*`). The parent frame must validate the request origin to prevent unauthorized access.
+</Warning>
+
+## Wallet Type Priority
+
+When multiple versions of the same wallet exist:
+
+1. **InjectedWallet** - Highest priority (native experience)
+2. **ParentFrameWallet** - Second priority (embedded contexts)
+3. **SandboxWallet** - Fallback (always available)
+
+```typescript src/NearConnector.ts
+// Injected and parent frame wallets use unshift() to add to front
+this.wallets.unshift(new InjectedWallet(this, event.detail));
+
+// Sandbox wallets use push() to add to end
+this.wallets.push(new SandboxWallet(this, manifest));
+```
+
+<Check>
+  This priority system ensures users get the best available wallet experience automatically.
+</Check>

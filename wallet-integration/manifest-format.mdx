@@ -1,0 +1,564 @@
+---
+title: "Manifest Format Reference"
+description: "Complete reference for the wallet manifest.json format including all fields, features, and permissions"
+---
+
+The manifest.json file defines your wallet's metadata, capabilities, and required permissions. It's used by NEAR Connect to understand how to integrate with your wallet.
+
+## Complete Example
+
+Here's a complete manifest example from HOT Wallet:
+
+```json manifest.json
+{
+  "id": "hot-wallet",
+  "name": "HOT Wallet",
+  "icon": "https://app.hot-labs.org/images/hot/hot-icon.png",
+  "description": "Secure Multichain wallet. Manage assets, refuel gas, and mine $HOT on any device with HOT Wallet",
+  "website": "https://hot-labs.org/wallet",
+  "version": "1.0.0",
+  "executor": "https://raw.githubusercontent.com/hot-dao/near-selector/refs/heads/main/repository/hotwallet.js",
+  "type": "sandbox",
+  
+  "platform": {
+    "android": "https://play.google.com/store/apps/details?id=app.herewallet.hot&hl=en",
+    "ios": "https://apps.apple.com/us/app/hot-wallet/id6740916148",
+    "chrome": "https://chromewebstore.google.com/detail/hot-wallet/mpeengabcnhhjjgleiodimegnkpcenbk",
+    "firefox": "https://addons.mozilla.org/en-US/firefox/addon/hot-wallet",
+    "web": "https://app.hot-labs.org",
+    "tga": "https://t.me/hot_wallet/app"
+  },
+  
+  "features": {
+    "signMessage": true,
+    "signInWithoutAddKey": true,
+    "signAndSendTransaction": true,
+    "signAndSendTransactions": true,
+    "signInAndSignMessage": true,
+    "signDelegateActions": false,
+    "mainnet": true,
+    "testnet": true
+  },
+  
+  "permissions": {
+    "storage": true,
+    "allowsOpen": [
+      "https://download.hot-labs.org",
+      "https://hot-labs.org/wallet",
+      "https://t.me/hot_wallet/app",
+      "https://play.google.com",
+      "https://apps.apple.com",
+      "hotwallet://",
+      "https://wallet.near.org"
+    ]
+  }
+}
+```
+
+## Required Fields
+
+<ParamField path="id" type="string" required>
+  Unique identifier for your wallet. Use lowercase with hyphens (e.g., `my-wallet`).
+  
+  ```json
+  "id": "hot-wallet"
+  ```
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  Display name shown to users in the wallet selector.
+  
+  ```json
+  "name": "HOT Wallet"
+  ```
+</ParamField>
+
+<ParamField path="icon" type="string" required>
+  URL to wallet icon/logo. Should be a square image, preferably PNG or SVG.
+  
+  ```json
+  "icon": "https://app.hot-labs.org/images/hot/hot-icon.png"
+  ```
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Short description of your wallet (1-2 sentences).
+  
+  ```json
+  "description": "Secure Multichain wallet for NEAR and other blockchains"
+  ```
+</ParamField>
+
+<ParamField path="website" type="string" required>
+  Your wallet's main website URL.
+  
+  ```json
+  "website": "https://hot-labs.org/wallet"
+  ```
+</ParamField>
+
+<ParamField path="version" type="string" required>
+  Semantic version of your wallet integration (e.g., `1.0.0`).
+  
+  ```json
+  "version": "1.0.0"
+  ```
+</ParamField>
+
+<ParamField path="executor" type="string" required>
+  URL to your wallet executor JavaScript file (for sandbox wallets).
+  
+  Can be absolute or relative to the dApp origin.
+  
+  ```json
+  "executor": "https://raw.githubusercontent.com/org/repo/main/wallet.js"
+  ```
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Integration type: `"sandbox"` or `"injected"`.
+  
+  - `sandbox`: Wallet runs in isolated iframe (recommended for most wallets)
+  - `injected`: Wallet is injected by browser extension
+  
+  ```json
+  "type": "sandbox"
+  ```
+</ParamField>
+
+## Platform Links
+
+<ParamField path="platform" type="object" required>
+  Download/access links for each platform your wallet supports.
+  
+  <Expandable title="Supported Platforms">
+    <ResponseField name="web" type="string">
+      Web application URL
+    </ResponseField>
+    
+    <ResponseField name="android" type="string">
+      Google Play Store URL
+    </ResponseField>
+    
+    <ResponseField name="ios" type="string">
+      Apple App Store URL
+    </ResponseField>
+    
+    <ResponseField name="chrome" type="string">
+      Chrome Web Store URL
+    </ResponseField>
+    
+    <ResponseField name="firefox" type="string">
+      Firefox Add-ons URL
+    </ResponseField>
+    
+    <ResponseField name="edge" type="string">
+      Microsoft Edge Add-ons URL
+    </ResponseField>
+    
+    <ResponseField name="tga" type="string">
+      Telegram Mini App URL
+    </ResponseField>
+  </Expandable>
+  
+  ```json
+  "platform": {
+    "web": "https://app.hot-labs.org",
+    "android": "https://play.google.com/store/apps/details?id=com.wallet",
+    "ios": "https://apps.apple.com/app/wallet/id123456789",
+    "chrome": "https://chromewebstore.google.com/detail/wallet/abc123"
+  }
+  ```
+</ParamField>
+
+## Features
+
+<ParamField path="features" type="object" required>
+  Declare which NEAR wallet features your wallet supports.
+  
+  <Expandable title="All Features">
+    <ResponseField name="signMessage" type="boolean" default={false}>
+      Can sign arbitrary messages for verification.
+    </ResponseField>
+    
+    <ResponseField name="signTransaction" type="boolean" default={false}>
+      Can sign transactions without sending (rarely used).
+    </ResponseField>
+    
+    <ResponseField name="signAndSendTransaction" type="boolean" default={false}>
+      Can sign and broadcast a single transaction.
+    </ResponseField>
+    
+    <ResponseField name="signAndSendTransactions" type="boolean" default={false}>
+      Can sign and broadcast multiple transactions in batch.
+    </ResponseField>
+    
+    <ResponseField name="signInWithoutAddKey" type="boolean" default={false}>
+      Supports sign-in without adding a function call access key on-chain.
+    </ResponseField>
+    
+    <ResponseField name="signInAndSignMessage" type="boolean" default={false}>
+      Can sign a message during the sign-in flow.
+    </ResponseField>
+    
+    <ResponseField name="signDelegateActions" type="boolean" default={false}>
+      Supports signing delegate actions (meta-transactions).
+    </ResponseField>
+    
+    <ResponseField name="verifyOwner" type="boolean" default={false}>
+      Can verify account ownership.
+    </ResponseField>
+    
+    <ResponseField name="mainnet" type="boolean" default={true}>
+      Supports NEAR mainnet.
+    </ResponseField>
+    
+    <ResponseField name="testnet" type="boolean" default={false}>
+      Supports NEAR testnet.
+    </ResponseField>
+  </Expandable>
+  
+  ```json
+  "features": {
+    "signMessage": true,
+    "signInWithoutAddKey": true,
+    "signAndSendTransaction": true,
+    "signAndSendTransactions": true,
+    "mainnet": true,
+    "testnet": true
+  }
+  ```
+</ParamField>
+
+## Permissions
+
+<ParamField path="permissions" type="object" required>
+  Permissions your wallet executor needs to function.
+  
+  <Expandable title="Available Permissions">
+    <ResponseField name="storage" type="boolean" default={false}>
+      Access to localStorage for persisting wallet state.
+      
+      Enables: `window.selector.storage.get/set/remove/keys()`
+      
+      ```json
+      "storage": true
+      ```
+    </ResponseField>
+    
+    <ResponseField name="allowsOpen" type="string[]" default={[]}>
+      URLs your wallet is allowed to open in popups or deep links.
+      
+      URLs can include:
+      - Full URLs: `https://wallet.example.com/sign`
+      - Domain-level: `https://wallet.example.com` (allows all paths)
+      - Custom schemes: `mywalletapp://` (for mobile deep links)
+      
+      ```json
+      "allowsOpen": [
+        "https://app.wallet.com",
+        "https://play.google.com",
+        "walletapp://"
+      ]
+      ```
+    </ResponseField>
+    
+    <ResponseField name="external" type="string[]" default={[]}>
+      External JavaScript objects your wallet can access.
+      
+      Useful for browser extension wallets that inject global objects.
+      
+      ```json
+      "external": ["okxwallet.near", "nightly.near"]
+      ```
+      
+      Usage:
+      ```javascript
+      const result = await window.selector.external(
+        'okxwallet.near',
+        'methodName',
+        [arg1, arg2]
+      );
+      ```
+    </ResponseField>
+    
+    <ResponseField name="walletConnect" type="boolean" default={false}>
+      Access to WalletConnect protocol APIs.
+      
+      Required if your wallet uses WalletConnect for mobile connections.
+      
+      ```json
+      "walletConnect": true
+      ```
+      
+      Enables:
+      - `window.selector.walletConnect.connect()`
+      - `window.selector.walletConnect.disconnect()`
+      - `window.selector.walletConnect.request()`
+      - `window.selector.walletConnect.getSession()`
+    </ResponseField>
+    
+    <ResponseField name="clipboardRead" type="boolean" default={false}>
+      Read from clipboard.
+      
+      ```json
+      "clipboardRead": true
+      ```
+    </ResponseField>
+    
+    <ResponseField name="clipboardWrite" type="boolean" default={false}>
+      Write to clipboard (e.g., for copying WalletConnect URIs).
+      
+      ```json
+      "clipboardWrite": true
+      ```
+    </ResponseField>
+    
+    <ResponseField name="usb" type="boolean" default={false}>
+      Access USB devices (for hardware wallets).
+      
+      ```json
+      "usb": true
+      ```
+    </ResponseField>
+    
+    <ResponseField name="hid" type="boolean" default={false}>
+      Access HID devices (for hardware wallets).
+      
+      ```json
+      "hid": true
+      ```
+    </ResponseField>
+    
+    <ResponseField name="location" type="boolean" default={false}>
+      Access browser geolocation.
+      
+      ```json
+      "location": true
+      ```
+    </ResponseField>
+  </Expandable>
+  
+  ```json
+  "permissions": {
+    "storage": true,
+    "clipboardWrite": true,
+    "allowsOpen": [
+      "https://wallet.example.com",
+      "walletapp://"
+    ]
+  }
+  ```
+</ParamField>
+
+## Optional Fields
+
+<ParamField path="debug" type="boolean" default={false}>
+  Enable debug mode for development/testing.
+  
+  When `true`, detailed logs will be shown in browser console.
+  
+  ```json
+  "debug": true
+  ```
+</ParamField>
+
+## Real-World Examples
+
+<AccordionGroup>
+  <Accordion title="MyNearWallet - Web Wallet">
+    Simple web-only wallet with basic features:
+    
+    ```json
+    {
+      "id": "mynearwallet",
+      "name": "MyNearWallet",
+      "icon": "https://storage.herewallet.app/upload/logo.png",
+      "description": "Web wallet for NEAR.",
+      "website": "https://mynearwallet.com",
+      "version": "1.0.0",
+      "executor": "https://raw.githubusercontent.com/org/repo/main/mnw.js",
+      "type": "sandbox",
+      
+      "platform": {
+        "web": "https://app.mynearwallet.com"
+      },
+      
+      "features": {
+        "signMessage": true,
+        "signInWithoutAddKey": true,
+        "signAndSendTransaction": true,
+        "signAndSendTransactions": true,
+        "mainnet": true,
+        "testnet": false
+      },
+      
+      "permissions": {
+        "storage": true,
+        "allowsOpen": ["https://app.mynearwallet.com"]
+      }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Meteor Wallet - Advanced Features">
+    Wallet with delegate actions and extension support:
+    
+    ```json
+    {
+      "id": "meteor-wallet",
+      "name": "Meteor Wallet",
+      "icon": "https://raw.githubusercontent.com/Meteor-Wallet/meteor_wallet_sdk/main/assets/meteor-logo-svg.svg",
+      "description": "The most simple and secure wallet to manage your crypto",
+      "website": "https://meteorwallet.app/",
+      "version": "1.1.0",
+      "executor": "https://raw.githubusercontent.com/Meteor-Wallet/meteor_wallet_sdk/data-storage/storage/meteor-near-connect-latest.js",
+      "type": "sandbox",
+      
+      "platform": {
+        "web": "https://wallet.meteorwallet.app",
+        "chrome": "https://chromewebstore.google.com/detail/meteor-wallet/abc123"
+      },
+      
+      "features": {
+        "signMessage": true,
+        "signInWithoutAddKey": true,
+        "signInAndSignMessage": true,
+        "signAndSendTransaction": true,
+        "signAndSendTransactions": true,
+        "signDelegateActions": true,
+        "mainnet": true,
+        "testnet": true
+      },
+      
+      "permissions": {
+        "storage": true,
+        "external": ["meteorCom", "meteorComV2"],
+        "allowsOpen": [
+          "https://chromewebstore.google.com",
+          "https://wallet.meteorwallet.app",
+          "https://meteorwallet.app"
+        ]
+      }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="WalletConnect - Protocol Integration">
+    Special wallet type using WalletConnect protocol:
+    
+    ```json
+    {
+      "id": "wallet-connect",
+      "name": "Wallet Connect",
+      "icon": "https://storage.herewallet.app/upload/walletconnect.svg",
+      "description": "Wallet Connect is a protocol for connecting wallets to dapps.",
+      "website": "https://reown.com",
+      "version": "1.0.0",
+      "executor": "https://raw.githubusercontent.com/org/repo/wallet-connect.js",
+      "type": "sandbox",
+      
+      "platform": {},
+      
+      "features": {
+        "signMessage": true,
+        "signInWithoutAddKey": true,
+        "signAndSendTransaction": true,
+        "signAndSendTransactions": true,
+        "mainnet": true,
+        "testnet": true
+      },
+      
+      "permissions": {
+        "storage": true,
+        "clipboardWrite": true,
+        "walletConnect": true
+      }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="NEAR CLI - Terminal Wallet">
+    CLI tool that signs transactions:
+    
+    ```json
+    {
+      "id": "near-cli",
+      "name": "NEAR CLI",
+      "icon": "data:image/svg+xml,%3Csvg...",
+      "description": "Sign transactions using near-cli-rs in your terminal",
+      "website": "https://near.cli.rs",
+      "version": "1.0.0",
+      "executor": "https://raw.githubusercontent.com/near/near-cli-connect/refs/heads/main/dist/near-cli.js",
+      "type": "sandbox",
+      
+      "platform": {},
+      
+      "features": {
+        "signMessage": true,
+        "signInWithoutAddKey": true,
+        "signInAndSignMessage": true,
+        "signAndSendTransaction": true,
+        "signAndSendTransactions": true,
+        "mainnet": true,
+        "testnet": true
+      },
+      
+      "permissions": {
+        "storage": true,
+        "clipboardWrite": true
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Validation
+
+Your manifest will be validated when loaded. Common errors:
+
+<Warning>
+  **Common Validation Errors:**
+  
+  - Missing required fields (`id`, `name`, `icon`, etc.)
+  - Invalid `type` (must be `"sandbox"` or `"injected"`)
+  - Invalid URLs in `executor`, `icon`, `website`, or `platform`
+  - Empty `features` object (must declare at least one feature)
+  - Invalid permission names
+</Warning>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Minimal Permissions" icon="shield">
+    Only request permissions your wallet actually needs. Users trust wallets with fewer permissions.
+  </Card>
+  
+  <Card title="Accurate Features" icon="check">
+    Only declare features you fully support. Incomplete implementations harm user experience.
+  </Card>
+  
+  <Card title="Version Control" icon="git-alt">
+    Increment version when changing executor code. NEAR Connect caches executors by version.
+  </Card>
+  
+  <Card title="Platform Support" icon="mobile">
+    Provide download links for all platforms you support. Helps users discover your wallet.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create Executor Script" icon="code" href="/wallet-integration/creating-executor">
+    Implement the wallet interface in JavaScript
+  </Card>
+  
+  <Card title="Sandbox API Reference" icon="window" href="/wallet-integration/sandbox-api">
+    Learn about available APIs for executors
+  </Card>
+  
+  <Card title="Testing" icon="flask" href="/wallet-integration/testing">
+    Test your wallet integration locally
+  </Card>
+</CardGroup>

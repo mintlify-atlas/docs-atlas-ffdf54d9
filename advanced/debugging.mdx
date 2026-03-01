@@ -1,0 +1,511 @@
+---
+title: Debugging Wallet Integrations
+description: Debug and test custom wallet integrations using debug manifests and developer tools
+---
+
+## Overview
+
+NEAR Connect provides powerful debugging capabilities that allow wallet developers to test their integrations directly within any dApp without modifying the production manifest. This is especially useful when developing new wallet connectors or testing updates to existing ones.
+
+## Debug Wallets
+
+Debug wallets are custom wallet manifests that you can temporarily add to the connector for testing purposes. They appear in the wallet selection modal alongside production wallets and are automatically persisted in storage for convenience.
+
+<Note>
+  Debug wallets are marked with a special flag (`debug: true`) and display a remove button in the wallet selector, making them easy to identify and manage.
+</Note>
+
+## Accessing Debug Settings
+
+The wallet selector modal includes a settings button (three dots icon) in the top-right corner. Clicking this button opens the debug settings panel where you can add custom wallet manifests.
+
+<Frame>
+  <img src="/images/debug-settings-button.png" alt="Settings button in wallet selector" style={{ borderRadius: '0.5rem' }} />
+</Frame>
+
+## Adding a Debug Wallet via UI
+
+1. Open the wallet selector modal
+2. Click the settings button (three dots) in the top-right corner
+3. Paste your wallet manifest JSON into the textarea
+4. Click the "Add" button
+
+The default template provided in the debug panel:
+
+```json /home/daytona/workspace/source/src/popups/NearWalletsPopup.ts:6-28
+{
+  "id": "custom-wallet",
+  "name": "Custom Wallet",
+  "icon": "https://www.mynearwallet.com/images/webclip.png",
+  "description": "Custom wallet for NEAR.",
+  "website": "",
+  "version": "1.0.0",
+  "executor": "your-executor-url.js",
+  "type": "sandbox",
+  "platform": {},
+  "features": {
+    "signMessage": true,
+    "signInWithoutAddKey": true,
+    "signInAndSignMessage": true,
+    "signAndSendTransaction": true,
+    "signAndSendTransactions": true,
+    "signDelegateActions": true
+  },
+  "permissions": {
+    "storage": true,
+    "allowsOpen": []
+  }
+}
+```
+
+## Adding Debug Wallets Programmatically
+
+You can also register debug wallets directly through the connector API:
+
+```typescript
+import { NearConnector } from "@hot-labs/near-connect";
+
+const connector = new NearConnector();
+
+// Wait for connector to initialize
+await connector.whenManifestLoaded;
+
+// Add a debug wallet
+const manifest = await connector.registerDebugWallet({
+  id: "my-test-wallet",
+  name: "My Test Wallet",
+  icon: "https://example.com/icon.png",
+  description: "Testing my wallet integration",
+  website: "https://example.com",
+  version: "1.0.0",
+  executor: "http://localhost:3000/wallet-executor.js",
+  type: "sandbox",
+  platform: {},
+  features: {
+    signMessage: true,
+    signInWithoutAddKey: true,
+    signAndSendTransaction: true,
+    signAndSendTransactions: true,
+    mainnet: true,
+    testnet: true
+  },
+  permissions: {
+    storage: true,
+    allowsOpen: ["http://localhost:3000"]
+  }
+});
+
+console.log("Debug wallet registered:", manifest);
+```
+
+### Using JSON Strings
+
+You can also pass a JSON string instead of an object:
+
+```typescript
+const manifestJson = `{
+  "id": "my-test-wallet",
+  "name": "My Test Wallet",
+  "icon": "https://example.com/icon.png",
+  "description": "Testing my wallet integration",
+  "website": "https://example.com",
+  "version": "1.0.0",
+  "executor": "http://localhost:3000/wallet-executor.js",
+  "type": "sandbox",
+  "platform": {},
+  "features": {
+    "signMessage": true,
+    "signInWithoutAddKey": true,
+    "signAndSendTransaction": true,
+    "signAndSendTransactions": true
+  },
+  "permissions": {
+    "storage": true,
+    "allowsOpen": []
+  }
+}`;
+
+await connector.registerDebugWallet(manifestJson);
+```
+
+## Manifest Validation
+
+When registering a debug wallet, NEAR Connect validates the manifest structure to ensure all required fields are present:
+
+```typescript /home/daytona/workspace/source/src/NearConnector.ts:215-227
+async registerDebugWallet(json: string | WalletManifest) {
+  const manifest = typeof json === "string" ? (JSON.parse(json) as WalletManifest) : json;
+  if (manifest.type !== "sandbox") throw new Error("Only sandbox wallets type are supported");
+  if (!manifest.id) throw new Error("Manifest must have an id");
+  if (!manifest.name) throw new Error("Manifest must have a name");
+  if (!manifest.icon) throw new Error("Manifest must have an icon");
+  if (!manifest.website) throw new Error("Manifest must have a website");
+  if (!manifest.version) throw new Error("Manifest must have a version");
+  if (!manifest.executor) throw new Error("Manifest must have an executor");
+  if (!manifest.features) throw new Error("Manifest must have features");
+  if (!manifest.permissions) throw new Error("Manifest must have permissions");
+  if (this.wallets.find((wallet) => wallet.manifest.id === manifest.id)) throw new Error("Wallet already registered");
+  // ...
+}
+```
+
+<Warning>
+  All debug wallets must be of type `"sandbox"`. Injected wallet types cannot be registered as debug wallets for security reasons.
+</Warning>
+
+## Required Manifest Fields
+
+A valid debug wallet manifest must include:
+
+- **`id`**: Unique identifier for the wallet
+- **`name`**: Display name
+- **`icon`**: URL to wallet icon
+- **`website`**: Wallet's website URL
+- **`version`**: Wallet version (e.g., "1.0.0")
+- **`executor`**: URL to the wallet executor JavaScript file
+- **`type`**: Must be `"sandbox"`
+- **`features`**: Object defining supported wallet features
+- **`permissions`**: Object defining required permissions
+
+## Removing Debug Wallets
+
+### Via UI
+
+Debug wallets show a remove button (X icon) next to them in the wallet selector. Click this button to remove the debug wallet.
+
+### Programmatically
+
+```typescript
+const connector = new NearConnector();
+
+// Remove a debug wallet by ID
+await connector.removeDebugWallet("my-test-wallet");
+```
+
+## Persistence
+
+Debug wallets are automatically persisted in storage and will be restored when you reload the page:
+
+```typescript /home/daytona/workspace/source/src/NearConnector.ts:162-165
+this.storage.get("debug-wallets").then((json) => {
+  const debugWallets = JSON.parse(json ?? "[]") as WalletManifest[];
+  debugWallets.forEach((wallet) => this.registerDebugWallet(wallet));
+});
+```
+
+This means you can:
+1. Add a debug wallet once
+2. Refresh the page
+3. Your debug wallet will still be available
+
+<Tip>
+  Debug wallets persist across page reloads but are stored in browser storage, so they won't sync across different browsers or devices.
+</Tip>
+
+## Local Development Workflow
+
+### Step 1: Set Up Local Executor
+
+Create a local server to serve your wallet executor script:
+
+```bash
+# Create a simple HTTP server
+python3 -m http.server 3000
+# or
+npx serve -p 3000
+```
+
+### Step 2: Create Executor Script
+
+Create `wallet-executor.js` in your served directory:
+
+```javascript
+class MyWallet {
+  constructor() {
+    this.accounts = [];
+  }
+
+  async signIn({ network, contractId, methodNames }) {
+    console.log("Sign in called", { network, contractId, methodNames });
+    
+    // Your wallet logic here
+    const accountId = "test.near";
+    this.accounts = [{ accountId }];
+    
+    return this.accounts;
+  }
+
+  async signOut() {
+    console.log("Sign out called");
+    this.accounts = [];
+  }
+
+  async getAccounts() {
+    return this.accounts;
+  }
+
+  async signAndSendTransaction(params) {
+    console.log("Sign and send transaction", params);
+    // Your transaction signing logic
+    throw new Error("Not implemented");
+  }
+
+  // Implement other required methods...
+}
+
+// Register the wallet with NEAR Connect
+window.selector.ready(new MyWallet());
+```
+
+### Step 3: Register Debug Wallet
+
+Add your debug wallet pointing to the local executor:
+
+```typescript
+const connector = new NearConnector();
+
+await connector.registerDebugWallet({
+  id: "local-test-wallet",
+  name: "Local Test Wallet",
+  icon: "http://localhost:3000/icon.png",
+  description: "Local development wallet",
+  website: "http://localhost:3000",
+  version: "0.0.1",
+  executor: "http://localhost:3000/wallet-executor.js",
+  type: "sandbox",
+  platform: {},
+  features: {
+    signInWithoutAddKey: true,
+    signAndSendTransaction: true,
+    signAndSendTransactions: true,
+    mainnet: true,
+    testnet: true
+  },
+  permissions: {
+    storage: true,
+    allowsOpen: ["http://localhost:3000"]
+  }
+});
+```
+
+### Step 4: Test in dApp
+
+1. Open your dApp
+2. Click to connect wallet
+3. Select your "Local Test Wallet" from the list
+4. Test wallet functionality
+
+## Using Custom Manifests in Development
+
+During development, you can load a custom manifest file instead of the default:
+
+```typescript /home/daytona/workspace/source/example/src/App.tsx:34-40
+const connector = new NearConnector({
+  manifest: process.env.NODE_ENV === "production" 
+    ? undefined 
+    : "/near-connect/repository/manifest.json",
+  providers: { mainnet: ["https://relmn.aurora.dev"] },
+  network,
+  logger,
+});
+```
+
+This allows you to:
+- Test against a specific manifest version
+- Include unreleased wallet versions
+- Control which wallets appear during development
+
+## Debugging with Logger
+
+Enable detailed logging to debug wallet interactions:
+
+```typescript
+const logger = {
+  log: (...args: any[]) => console.log("[NEAR Connect]", ...args)
+};
+
+const connector = new NearConnector({
+  logger
+});
+```
+
+This will log:
+- Wallet availability
+- Sign-in attempts
+- Transaction submissions
+- Errors and failures
+
+Example output:
+
+```
+[NEAR Connect] Wallet available to connect <wallet object>
+[NEAR Connect] Set preferred wallet, try to signIn "my-wallet-id"
+[NEAR Connect] Signed in to wallet "my-wallet-id" [{accountId: "test.near"}]
+```
+
+## Browser DevTools Integration
+
+Access the connector instance from browser console for debugging:
+
+```javascript
+// Store connector on window for debugging (development only)
+window.nearConnector = connector;
+
+// Then in browser console:
+window.nearConnector.wallets  // View all registered wallets
+window.nearConnector.availableWallets  // View filtered wallets
+await window.nearConnector.wallet()  // Get current wallet
+```
+
+<Warning>
+  Never expose the connector instance on `window` in production builds. This is only for development debugging.
+</Warning>
+
+## Testing Different Networks
+
+Debug wallets should support both mainnet and testnet:
+
+```json
+{
+  "features": {
+    "signMessage": true,
+    "signInWithoutAddKey": true,
+    "signAndSendTransaction": true,
+    "signAndSendTransactions": true,
+    "mainnet": true,
+    "testnet": true
+  }
+}
+```
+
+Test network switching:
+
+```typescript
+await connector.switchNetwork("testnet");
+await connector.connect({ walletId: "local-test-wallet" });
+
+await connector.switchNetwork("mainnet");
+await connector.connect({ walletId: "local-test-wallet" });
+```
+
+## Common Debugging Scenarios
+
+### Testing Sign In Flow
+
+```javascript
+// In your wallet executor
+class MyWallet {
+  async signIn({ network, contractId, methodNames }) {
+    console.log("Sign in parameters:", { network, contractId, methodNames });
+    
+    // Simulate user approval
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const accounts = [{
+      accountId: `test.${network === 'testnet' ? 'testnet' : 'near'}`,
+      publicKey: "ed25519:..."
+    }];
+    
+    console.log("Sign in successful:", accounts);
+    return accounts;
+  }
+}
+```
+
+### Testing Transaction Signing
+
+```javascript
+class MyWallet {
+  async signAndSendTransaction({ signerId, receiverId, actions, network }) {
+    console.log("Transaction request:", {
+      signerId,
+      receiverId,
+      actions: actions.map(a => a.type || a.enum),
+      network
+    });
+    
+    // Your signing logic
+    const outcome = {
+      transaction: { hash: "mock-hash-" + Date.now() },
+      status: { SuccessValue: "" },
+      receipts: []
+    };
+    
+    console.log("Transaction outcome:", outcome);
+    return outcome;
+  }
+}
+```
+
+### Testing Error Handling
+
+```javascript
+class MyWallet {
+  async signIn() {
+    // Test rejection
+    throw new Error("User rejected sign in");
+  }
+  
+  async signAndSendTransaction(params) {
+    // Test transaction failure
+    throw new Error("Insufficient gas");
+  }
+}
+```
+
+## Best Practices
+
+1. **Use unique IDs**: Give your debug wallets unique IDs to avoid conflicts with production wallets
+
+2. **Clear console**: Use descriptive console.log messages in your executor to track execution flow
+
+3. **Test all features**: Ensure you implement and test all features declared in your manifest
+
+4. **Handle errors**: Test both success and error paths in your wallet implementation
+
+5. **Clean up**: Remove debug wallets when you're done testing to avoid confusion
+
+6. **Version control**: Consider storing your debug manifests in version control for team collaboration
+
+7. **CORS headers**: Ensure your local server sends proper CORS headers for the executor script
+
+## Security Considerations
+
+<Warning>
+  Debug wallets bypass the production manifest review process. Never use debug wallets with real accounts or real funds. They are for testing purposes only.
+</Warning>
+
+- Debug wallets can execute arbitrary JavaScript
+- The executor URL can point to any location (including localhost)
+- Debug wallets are not audited or reviewed
+- Always remove debug wallets before deploying to production
+
+## Troubleshooting
+
+### Wallet Not Appearing
+
+1. Check browser console for validation errors
+2. Verify all required manifest fields are present
+3. Ensure the executor URL is accessible
+4. Check that wallet ID doesn't conflict with existing wallets
+
+### Executor Not Loading
+
+1. Verify the executor URL is correct and accessible
+2. Check browser console for CORS errors
+3. Ensure your local server is running
+4. Check network tab in DevTools for failed requests
+
+### Methods Not Working
+
+1. Verify `window.selector.ready()` is called with your wallet instance
+2. Check that all required methods are implemented
+3. Look for JavaScript errors in the iframe console
+4. Ensure feature flags match your implementation
+
+### Storage Issues
+
+1. Check if localStorage is available and not full
+2. Clear browser storage and re-add debug wallet
+3. Check for JSON parsing errors in console
+4. Verify storage permissions in browser settings

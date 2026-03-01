@@ -1,0 +1,285 @@
+---
+title: 'InjectedWallet'
+description: 'Wallet implementation that wraps browser-injected NEAR wallet extensions'
+---
+
+## Overview
+
+The `InjectedWallet` class provides a wrapper around browser-injected NEAR wallet extensions. It acts as a bridge between the NEAR Connector and wallet extensions that inject themselves into the browser's global context (such as browser extension wallets).
+
+## Constructor
+
+```typescript
+constructor(connector: NearConnector, wallet: NearWalletBase)
+```
+
+<ParamField path="connector" type="NearConnector" required>
+  The NEAR connector instance that manages the connection to the NEAR network.
+</ParamField>
+
+<ParamField path="wallet" type="NearWalletBase" required>
+  The injected wallet instance from the browser extension.
+</ParamField>
+
+## Properties
+
+<ResponseField name="connector" type="NearConnector">
+  Reference to the NEAR connector instance.
+</ResponseField>
+
+<ResponseField name="wallet" type="NearWalletBase">
+  Reference to the underlying injected wallet implementation.
+</ResponseField>
+
+<ResponseField name="manifest" type="WalletManifest">
+  The wallet manifest from the injected wallet, accessed via a getter.
+</ResponseField>
+
+## Methods
+
+### signIn
+
+Initiate the sign-in process using the injected wallet.
+
+```typescript
+async signIn(data?: {
+  network?: Network;
+  contractId?: string;
+  methodNames?: Array<string>;
+}): Promise<Array<Account>>
+```
+
+<ParamField path="data.network" type="Network">
+  The NEAR network to connect to ("mainnet" or "testnet"). Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="data.contractId" type="string">
+  Optional contract ID for limited access key permissions.
+</ParamField>
+
+<ParamField path="data.methodNames" type="string[]">
+  Optional array of method names for limited access key permissions.
+</ParamField>
+
+**Returns:** Promise resolving to an array of signed-in accounts.
+
+### signInAndSignMessage
+
+Sign in and simultaneously sign a message in a single operation.
+
+```typescript
+async signInAndSignMessage(
+  data: SignInAndSignMessageParams
+): Promise<Array<AccountWithSignedMessage>>
+```
+
+<ParamField path="data.network" type="Network">
+  The NEAR network to connect to. Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="data.contractId" type="string">
+  Optional contract ID for access key permissions.
+</ParamField>
+
+<ParamField path="data.methodNames" type="string[]">
+  Optional array of method names for access key permissions.
+</ParamField>
+
+<ParamField path="data.messageParams" type="SignMessageDuringSignInParams" required>
+  Parameters for the message to be signed during sign-in.
+</ParamField>
+
+**Returns:** Promise resolving to an array of accounts with signed messages.
+
+### signOut
+
+Sign out from the injected wallet.
+
+```typescript
+async signOut(data?: { network?: Network }): Promise<void>
+```
+
+<ParamField path="data.network" type="Network">
+  The NEAR network to sign out from. Defaults to the connector's network.
+</ParamField>
+
+### getAccounts
+
+Retrieve the currently signed-in accounts from the injected wallet.
+
+```typescript
+async getAccounts(data?: { network?: Network }): Promise<Array<Account>>
+```
+
+<ParamField path="data.network" type="Network">
+  The NEAR network to query. Defaults to the connector's network.
+</ParamField>
+
+**Returns:** Promise resolving to an array of signed-in accounts.
+
+### signAndSendTransaction
+
+Sign and send a transaction through the injected wallet.
+
+```typescript
+async signAndSendTransaction(
+  params: SignAndSendTransactionParams
+): Promise<FinalExecutionOutcome>
+```
+
+<ParamField path="params.receiverId" type="string" required>
+  The account ID that will receive the transaction.
+</ParamField>
+
+<ParamField path="params.actions" type="Array<Action>" required>
+  Array of NEAR actions to include in the transaction.
+</ParamField>
+
+<ParamField path="params.network" type="Network">
+  The NEAR network for the transaction. Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="params.signerId" type="string">
+  Optional account ID of the transaction signer.
+</ParamField>
+
+**Returns:** Promise resolving to the final execution outcome of the transaction.
+
+<Note>
+The method handles different return formats from various wallet implementations. If the wallet returns an array in `result.transactions`, it extracts the first transaction.
+</Note>
+
+### signAndSendTransactions
+
+Sign and send multiple transactions through the injected wallet.
+
+```typescript
+async signAndSendTransactions(
+  params: SignAndSendTransactionsParams
+): Promise<Array<FinalExecutionOutcome>>
+```
+
+<ParamField path="params.transactions" type="Array<Transaction>" required>
+  Array of transactions, each containing a receiverId and actions.
+</ParamField>
+
+<ParamField path="params.network" type="Network">
+  The NEAR network for the transactions. Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="params.signerId" type="string">
+  Optional account ID of the transaction signer.
+</ParamField>
+
+**Returns:** Promise resolving to an array of final execution outcomes.
+
+<Note>
+Handles different response formats from wallet implementations, checking for results in `result.transactions`.
+</Note>
+
+### signMessage
+
+Sign a message using the injected wallet.
+
+```typescript
+async signMessage(params: SignMessageParams): Promise<SignedMessage>
+```
+
+<ParamField path="params.message" type="string" required>
+  The message to be signed.
+</ParamField>
+
+<ParamField path="params.recipient" type="string" required>
+  The intended recipient of the signed message.
+</ParamField>
+
+<ParamField path="params.nonce" type="Uint8Array" required>
+  A unique nonce to prevent replay attacks.
+</ParamField>
+
+<ParamField path="params.network" type="Network">
+  The NEAR network. Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="params.signerId" type="string">
+  Optional account ID of the message signer.
+</ParamField>
+
+**Returns:** Promise resolving to the signed message with signature.
+
+### signDelegateActions
+
+Sign delegate actions for meta-transactions using the injected wallet.
+
+```typescript
+async signDelegateActions(
+  params: SignDelegateActionsParams
+): Promise<SignDelegateActionsResponse>
+```
+
+<ParamField path="params.delegateActions" type="Array<DelegateAction>" required>
+  Array of delegate actions, each containing a receiverId and actions.
+</ParamField>
+
+<ParamField path="params.network" type="Network">
+  The NEAR network. Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="params.signerId" type="string">
+  Optional account ID of the signer.
+</ParamField>
+
+**Returns:** Promise resolving to signed delegate actions.
+
+## Usage Example
+
+```typescript
+import { InjectedWallet } from 'near-connect';
+
+// Assuming a wallet was injected by a browser extension
+const injectedWalletBase = window.nearWallets?.['my-wallet'];
+
+if (injectedWalletBase) {
+  const wallet = new InjectedWallet(connector, injectedWalletBase);
+  
+  // Sign in
+  const accounts = await wallet.signIn({
+    network: 'mainnet'
+  });
+  
+  console.log('Wallet manifest:', wallet.manifest);
+  
+  // Send a transaction
+  const outcome = await wallet.signAndSendTransaction({
+    receiverId: 'example.near',
+    actions: [
+      {
+        type: 'Transfer',
+        params: {
+          deposit: '1000000000000000000000000' // 1 NEAR
+        }
+      }
+    ]
+  });
+}
+```
+
+## Error Handling
+
+<Warning>
+The `signAndSendTransaction` and `signAndSendTransactions` methods will throw an error with the message "No result from wallet" if the injected wallet returns an empty result.
+</Warning>
+
+```typescript
+try {
+  const outcome = await wallet.signAndSendTransaction(params);
+} catch (error) {
+  if (error.message === 'No result from wallet') {
+    console.error('Wallet failed to return a transaction result');
+  }
+}
+```
+
+## Compatibility
+
+The `InjectedWallet` class includes compatibility handling for different wallet implementations that may return results in varying formats. This ensures consistent behavior across different browser extension wallets.

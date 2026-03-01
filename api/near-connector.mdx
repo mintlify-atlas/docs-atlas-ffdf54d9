@@ -1,0 +1,517 @@
+---
+title: NearConnector
+description: Complete API reference for the NearConnector class - the main entry point for integrating NEAR wallets into your application.
+---
+
+## Overview
+
+`NearConnector` is the primary class for managing wallet connections in your NEAR application. It handles wallet discovery, connection management, network switching, and provides event-driven communication.
+
+## Constructor
+
+<ParamField path="options" type="NearConnectorOptions" optional>
+  Configuration options for the connector
+
+  <Expandable title="properties">
+    <ParamField path="providers" type="object" optional>
+      Custom RPC provider URLs for different networks
+      ```typescript
+      { mainnet?: string[]; testnet?: string[] }
+      ```
+    </ParamField>
+
+    <ParamField path="features" type="Partial<WalletFeatures>" optional>
+      Filter wallets by required features. Only wallets supporting these features will be available.
+      ```typescript
+      {
+        signMessage?: boolean;
+        signTransaction?: boolean;
+        signAndSendTransaction?: boolean;
+        signAndSendTransactions?: boolean;
+        signInWithoutAddKey?: boolean;
+        signInAndSignMessage?: boolean;
+        signDelegateActions?: boolean;
+        mainnet?: boolean;
+        testnet?: boolean;
+      }
+      ```
+    </ParamField>
+
+    <ParamField path="excludedWallets" type="string[]" optional>
+      Array of wallet IDs to exclude from the connector. Note: "hot-wallet" is always included regardless of this setting.
+    </ParamField>
+
+    <ParamField path="autoConnect" type="boolean" default="true" optional>
+      Automatically connect when a wallet is injected into the page
+    </ParamField>
+
+    <ParamField path="network" type="Network" default="mainnet" optional>
+      The NEAR network to connect to: `"mainnet"` or `"testnet"`
+    </ParamField>
+
+    <ParamField path="manifest" type="string | { wallets: WalletManifest[]; version: string }" optional>
+      Custom wallet manifest URL or manifest object. If not provided, uses default manifest sources.
+    </ParamField>
+
+    <ParamField path="walletConnect" type="Promise<AbstractWalletConnect> | AbstractWalletConnect" optional>
+      WalletConnect instance for wallets that support WalletConnect protocol
+    </ParamField>
+
+    <ParamField path="events" type="EventEmitter<EventMap>" optional>
+      Custom event emitter instance. If not provided, a new one will be created.
+    </ParamField>
+
+    <ParamField path="storage" type="DataStorage" optional>
+      Custom storage implementation. Defaults to `LocalStorage`.
+    </ParamField>
+
+    <ParamField path="logger" type="Logger" optional>
+      Logger instance for debugging
+      ```typescript
+      { log: (...logs: any[]) => void }
+      ```
+    </ParamField>
+
+    <ParamField path="footerBranding" type="FooterBranding | null" optional>
+      Customize or hide the wallet selector popup footer. Pass `null` to hide the footer.
+      ```typescript
+      {
+        icon?: string;
+        heading: string;
+        link: string;
+        linkText: string;
+      }
+      ```
+    </ParamField>
+
+    <ParamField path="signIn" type="object" optional deprecated>
+      <Warning>
+        Deprecated. Add limited-access keys after user interaction instead of during connection.
+      </Warning>
+      Add a limited-access key during connection
+      ```typescript
+      { contractId?: string; methodNames?: string[] }
+      ```
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Example
+
+```typescript
+import { NearConnector } from '@near-connect/core';
+
+const connector = new NearConnector({
+  network: 'mainnet',
+  features: {
+    signAndSendTransaction: true,
+  },
+  excludedWallets: ['wallet-id-to-exclude'],
+  logger: { log: console.log },
+});
+```
+
+## Properties
+
+<ResponseField name="wallets" type="NearWalletBase[]">
+  Array of all registered wallet instances
+</ResponseField>
+
+<ResponseField name="availableWallets" type="NearWalletBase[]">
+  Filtered array of wallets that match the connector's feature requirements and network support
+</ResponseField>
+
+<ResponseField name="manifest" type="{ wallets: WalletManifest[]; version: string }">
+  Loaded wallet manifest containing wallet metadata
+</ResponseField>
+
+<ResponseField name="features" type="Partial<WalletFeatures>">
+  Required wallet features used for filtering
+</ResponseField>
+
+<ResponseField name="network" type="Network">
+  Current network: `"mainnet"` or `"testnet"`
+</ResponseField>
+
+<ResponseField name="events" type="EventEmitter<EventMap>">
+  Event emitter for listening to connector and wallet events
+</ResponseField>
+
+<ResponseField name="whenManifestLoaded" type="Promise<void>">
+  Promise that resolves when the wallet manifest has finished loading
+</ResponseField>
+
+## Methods
+
+### connect()
+
+Connect to a wallet. If no `walletId` is provided, opens the wallet selector UI.
+
+<ParamField path="options" type="NearConnector_ConnectOptions" optional>
+  <Expandable title="properties">
+    <ParamField path="walletId" type="string" optional>
+      ID of the wallet to connect to. If omitted, the wallet selector popup will be shown.
+    </ParamField>
+
+    <ParamField path="signMessageParams" type="SignMessageDuringSignInParams" optional>
+      If provided, the connector will filter for wallets that support `signInAndSignMessage` and request a signed message during sign-in. Useful for verifying account ownership immediately.
+      ```typescript
+      {
+        message: string;
+        recipient: string;
+        nonce: Uint8Array;
+      }
+      ```
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Promise<NearWalletBase>">
+  Resolves with the connected wallet instance
+</ResponseField>
+
+```typescript
+// Show wallet selector
+const wallet = await connector.connect();
+
+// Connect to specific wallet
+const wallet = await connector.connect({ walletId: 'my-near-wallet' });
+
+// Connect with signed message
+const wallet = await connector.connect({
+  signMessageParams: {
+    message: 'Login to MyApp',
+    recipient: 'myapp.near',
+    nonce: new Uint8Array(32),
+  },
+});
+```
+
+### disconnect()
+
+Disconnect from the current or specified wallet.
+
+<ParamField path="wallet" type="NearWalletBase" optional>
+  Wallet instance to disconnect. If not provided, disconnects the currently connected wallet.
+</ParamField>
+
+<ResponseField name="return" type="Promise<void>">
+  Resolves when disconnection is complete
+</ResponseField>
+
+```typescript
+await connector.disconnect();
+```
+
+### wallet()
+
+Get a wallet instance by ID, or get the currently connected wallet.
+
+<ParamField path="id" type="string | null" optional>
+  Wallet ID to retrieve. If not provided, returns the currently connected wallet.
+</ParamField>
+
+<ResponseField name="return" type="Promise<NearWalletBase>">
+  Resolves with the requested wallet instance
+</ResponseField>
+
+```typescript
+// Get current wallet
+const currentWallet = await connector.wallet();
+
+// Get specific wallet by ID
+const specificWallet = await connector.wallet('my-near-wallet');
+```
+
+### getConnectedWallet()
+
+Get the currently connected wallet and its accounts.
+
+<ResponseField name="return" type="Promise<{ wallet: NearWalletBase; accounts: Account[] }>">
+  Resolves with the connected wallet and account information
+</ResponseField>
+
+```typescript
+const { wallet, accounts } = await connector.getConnectedWallet();
+console.log('Connected as:', accounts[0].accountId);
+```
+
+### switchNetwork()
+
+Switch between mainnet and testnet. Disconnects current session and reconnects on the new network.
+
+<ParamField path="network" type="Network" required>
+  Target network: `"mainnet"` or `"testnet"`
+</ParamField>
+
+<ParamField path="signInData" type="{ contractId?: string; methodNames?: string[] }" optional>
+  Optional sign-in data for the new connection
+</ParamField>
+
+<ResponseField name="return" type="Promise<void>">
+  Resolves when the network switch is complete
+</ResponseField>
+
+```typescript
+await connector.switchNetwork('testnet');
+```
+
+### selectWallet()
+
+Open the wallet selector UI and wait for user selection.
+
+<ParamField path="options" type="object" optional>
+  <Expandable title="properties">
+    <ParamField path="features" type="Partial<WalletFeatures>" optional>
+      Additional feature requirements for wallet filtering
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Promise<string>">
+  Resolves with the selected wallet ID
+</ResponseField>
+
+```typescript
+const walletId = await connector.selectWallet({
+  features: { signMessage: true },
+});
+```
+
+### registerWallet()
+
+Register a new wallet from a manifest.
+
+<ParamField path="manifest" type="WalletManifest" required>
+  Wallet manifest object. Only sandbox-type wallets are currently supported.
+</ParamField>
+
+<ResponseField name="return" type="Promise<void>">
+  Resolves when the wallet is registered
+</ResponseField>
+
+```typescript
+await connector.registerWallet({
+  id: 'my-wallet',
+  type: 'sandbox',
+  name: 'My Wallet',
+  icon: 'https://example.com/icon.png',
+  // ... other manifest fields
+});
+```
+
+### registerDebugWallet()
+
+Register a debug wallet for testing. Debug wallets persist in storage and appear at the top of the wallet list.
+
+<ParamField path="json" type="string | WalletManifest" required>
+  Wallet manifest as JSON string or object
+</ParamField>
+
+<ResponseField name="return" type="Promise<WalletManifest>">
+  Resolves with the registered manifest
+</ResponseField>
+
+```typescript
+const manifest = await connector.registerDebugWallet({
+  id: 'debug-wallet',
+  type: 'sandbox',
+  name: 'Debug Wallet',
+  // ... other fields
+});
+```
+
+### removeDebugWallet()
+
+Remove a previously registered debug wallet.
+
+<ParamField path="id" type="string" required>
+  ID of the debug wallet to remove
+</ParamField>
+
+<ResponseField name="return" type="Promise<void>">
+  Resolves when the wallet is removed
+</ResponseField>
+
+```typescript
+await connector.removeDebugWallet('debug-wallet');
+```
+
+### use()
+
+Register a plugin to extend or modify wallet behavior. Plugins act as middleware for wallet methods.
+
+<ParamField path="plugin" type="WalletPlugin" required>
+  Plugin object implementing wallet method interceptors
+</ParamField>
+
+<ResponseField name="return" type="Promise<void>">
+  Resolves when the plugin is registered
+</ResponseField>
+
+```typescript
+await connector.use({
+  async signAndSendTransaction(params, next) {
+    console.log('Transaction:', params);
+    return await next();
+  },
+});
+```
+
+### on()
+
+Register an event listener.
+
+<ParamField path="event" type="keyof EventMap" required>
+  Event name to listen for
+</ParamField>
+
+<ParamField path="callback" type="(payload: EventMap[K]) => void" required>
+  Callback function to invoke when the event fires
+</ParamField>
+
+```typescript
+connector.on('wallet:signIn', ({ wallet, accounts }) => {
+  console.log('Signed in:', accounts[0].accountId);
+});
+```
+
+### once()
+
+Register a one-time event listener that automatically removes itself after first invocation.
+
+<ParamField path="event" type="keyof EventMap" required>
+  Event name to listen for
+</ParamField>
+
+<ParamField path="callback" type="(payload: EventMap[K]) => void" required>
+  Callback function
+</ParamField>
+
+```typescript
+connector.once('wallet:signIn', ({ accounts }) => {
+  console.log('First sign in:', accounts);
+});
+```
+
+### off()
+
+Remove an event listener.
+
+<ParamField path="event" type="keyof EventMap" required>
+  Event name
+</ParamField>
+
+<ParamField path="callback" type="(payload: EventMap[K]) => void" required>
+  The exact callback function to remove
+</ParamField>
+
+```typescript
+const handler = ({ accounts }) => console.log(accounts);
+connector.on('wallet:signIn', handler);
+connector.off('wallet:signIn', handler);
+```
+
+### removeAllListeners()
+
+Remove all listeners for a specific event, or all listeners for all events.
+
+<ParamField path="event" type="keyof EventMap" optional>
+  Event name. If not provided, removes all listeners for all events.
+</ParamField>
+
+```typescript
+// Remove all listeners for one event
+connector.removeAllListeners('wallet:signIn');
+
+// Remove all listeners for all events
+connector.removeAllListeners();
+```
+
+## Events
+
+The connector emits the following events:
+
+<ResponseField name="wallet:signIn" type="object">
+  Emitted when a user successfully signs in
+  ```typescript
+  {
+    wallet: NearWalletBase;
+    accounts: Account[];
+    success: boolean;
+    source: "signIn" | "signInAndSignMessage";
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="wallet:signInAndSignMessage" type="object">
+  Emitted when a user signs in with a signed message
+  ```typescript
+  {
+    wallet: NearWalletBase;
+    accounts: AccountWithSignedMessage[];
+    success: boolean;
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="wallet:signOut" type="object">
+  Emitted when a user signs out
+  ```typescript
+  { success: boolean }
+  ```
+</ResponseField>
+
+<ResponseField name="selector:walletsChanged" type="object">
+  Emitted when the available wallets list changes (e.g., wallet injected or debug wallet added)
+</ResponseField>
+
+<ResponseField name="selector:manifestUpdated" type="object">
+  Emitted when the wallet manifest is updated
+</ResponseField>
+
+## Type Definitions
+
+### Network
+
+```typescript
+type Network = "mainnet" | "testnet";
+```
+
+### Account
+
+```typescript
+interface Account {
+  accountId: string;
+  publicKey?: string;
+}
+```
+
+### AccountWithSignedMessage
+
+```typescript
+interface AccountWithSignedMessage extends Account {
+  signedMessage: SignedMessage;
+}
+```
+
+### SignedMessage
+
+```typescript
+interface SignedMessage {
+  accountId: string;
+  publicKey: string;
+  signature: string;
+}
+```
+
+### FooterBranding
+
+```typescript
+interface FooterBranding {
+  icon?: string;
+  heading: string;
+  link: string;
+  linkText: string;
+}
+```

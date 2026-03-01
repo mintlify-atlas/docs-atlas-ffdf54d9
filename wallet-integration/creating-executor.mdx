@@ -1,0 +1,491 @@
+---
+title: "Creating a Wallet Executor"
+description: "Build a sandboxed wallet executor script that implements the NEAR wallet interface"
+---
+
+A wallet executor is a JavaScript file that implements the wallet interface and runs in a sandboxed iframe. This guide shows you how to create an executor for your wallet.
+
+## Basic Structure
+
+Your executor script must implement the following methods:
+
+```javascript
+// Required: Return wallet accounts
+async function getAccounts({ network }) {
+  // Return array of { accountId, publicKey }
+}
+
+// Required: Sign in to wallet
+async function signIn({ network, contractId, methodNames }) {
+  // Show wallet UI, authenticate user
+  // Return array of accounts
+}
+
+// Required: Sign out from wallet
+async function signOut({ network }) {
+  // Clear stored credentials
+}
+
+// Required: Sign and send a single transaction
+async function signAndSendTransaction({ signerId, receiverId, actions, network }) {
+  // Sign transaction and send to network
+  // Return FinalExecutionOutcome
+}
+
+// Required: Sign and send multiple transactions
+async function signAndSendTransactions({ signerId, transactions, network }) {
+  // Sign all transactions and send
+  // Return array of FinalExecutionOutcome
+}
+
+// Optional: Sign a message
+async function signMessage({ signerId, message, recipient, nonce, network }) {
+  // Sign arbitrary message
+  // Return { accountId, publicKey, signature }
+}
+```
+
+## Complete Example
+
+Here's a complete executor example based on the HOT Wallet implementation:
+
+```javascript hotwallet.js
+// Storage helpers using window.selector API
+const storage = {
+  async get(key) {
+    return await window.selector.storage.get(key);
+  },
+  async set(key, value) {
+    return await window.selector.storage.set(key, value);
+  },
+  async remove(key) {
+    return await window.selector.storage.remove(key);
+  }
+};
+
+// Get current accounts
+async function getAccounts({ network }) {
+  const storageKey = `accounts:${network}`;
+  const accountsJson = await storage.get(storageKey);
+  
+  if (!accountsJson) return [];
+  return JSON.parse(accountsJson);
+}
+
+// Sign in to wallet
+async function signIn({ network, contractId, methodNames }) {
+  // Generate unique request ID
+  const requestId = crypto.randomUUID();
+  
+  // Create sign-in request data
+  const request = {
+    type: 'signIn',
+    network,
+    contractId,
+    methodNames,
+    requestId
+  };
+  
+  // Open wallet in popup/mobile app
+  const deepLink = `hotwallet://connect?request=${encodeURIComponent(JSON.stringify(request))}`;
+  const webLink = `https://app.hot-labs.org/connect?request=${encodeURIComponent(JSON.stringify(request))}`;
+  
+  // Try native app first, fallback to web
+  if (isMobile()) {
+    await window.selector.open(deepLink);
+  } else {
+    await window.selector.open(webLink);
+  }
+  
+  // Wait for response
+  const response = await waitForResponse(requestId);
+  
+  if (response.error) {
+    throw new Error(response.error);
+  }
+  
+  // Store accounts
+  const accounts = response.accounts;
+  await storage.set(`accounts:${network}`, JSON.stringify(accounts));
+  
+  return accounts;
+}
+
+// Sign out
+async function signOut({ network }) {
+  await storage.remove(`accounts:${network}`);
+}
+
+// Sign and send transaction
+async function signAndSendTransaction(params) {
+  const { signerId, receiverId, actions, network } = params;
+  
+  // Create transaction request
+  const requestId = crypto.randomUUID();
+  const request = {
+    type: 'signAndSendTransaction',
+    signerId,
+    receiverId,
+    actions,
+    network,
+    requestId
+  };
+  
+  // Open wallet
+  const link = `https://app.hot-labs.org/sign?request=${encodeURIComponent(JSON.stringify(request))}`;
+  await window.selector.open(link);
+  
+  // Wait for signed transaction result
+  const response = await waitForResponse(requestId);
+  
+  if (response.error) {
+    throw new Error(response.error);
+  }
+  
+  return response.result;
+}
+
+// Sign and send multiple transactions
+async function signAndSendTransactions(params) {
+  const { signerId, transactions, network } = params;
+  
+  const requestId = crypto.randomUUID();
+  const request = {
+    type: 'signAndSendTransactions',
+    signerId,
+    transactions,
+    network,
+    requestId
+  };
+  
+  const link = `https://app.hot-labs.org/sign?request=${encodeURIComponent(JSON.stringify(request))}`;
+  await window.selector.open(link);
+  
+  const response = await waitForResponse(requestId);
+  
+  if (response.error) {
+    throw new Error(response.error);
+  }
+  
+  return response.results;
+}
+
+// Sign message (optional)
+async function signMessage({ signerId, message, recipient, nonce, network }) {
+  const requestId = crypto.randomUUID();
+  const request = {
+    type: 'signMessage',
+    signerId,
+    message,
+    recipient,
+    nonce: Array.from(nonce), // Convert Uint8Array to array
+    network,
+    requestId
+  };
+  
+  const link = `https://app.hot-labs.org/sign-message?request=${encodeURIComponent(JSON.stringify(request))}`;
+  await window.selector.open(link);
+  
+  const response = await waitForResponse(requestId);
+  
+  if (response.error) {
+    throw new Error(response.error);
+  }
+  
+  return response.signedMessage;
+}
+
+// Helper: Wait for response from wallet
+function waitForResponse(requestId) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      window.removeEventListener('message', handler);
+      reject(new Error('Request timeout'));
+    }, 5 * 60 * 1000); // 5 minute timeout
+    
+    const handler = (event) => {
+      if (event.data?.requestId === requestId) {
+        clearTimeout(timeout);
+        window.removeEventListener('message', handler);
+        resolve(event.data);
+      }
+    };
+    
+    window.addEventListener('message', handler);
+  });
+}
+
+// Helper: Detect mobile
+function isMobile() {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+// Export wallet interface
+window.wallet = {
+  getAccounts,
+  signIn,
+  signOut,
+  signAndSendTransaction,
+  signAndSendTransactions,
+  signMessage
+};
+```
+
+## Key Concepts
+
+### Communication Pattern
+
+<Steps>
+  <Step title="Create Request">
+    Generate a unique request ID and prepare request data.
+  </Step>
+  
+  <Step title="Open Wallet UI">
+    Use `window.selector.open()` to open your wallet's interface (web, mobile app, or popup).
+  </Step>
+  
+  <Step title="User Interaction">
+    User reviews and approves/rejects the request in your wallet UI.
+  </Step>
+  
+  <Step title="Post Response">
+    Your wallet posts a message back with the matching request ID.
+  </Step>
+  
+  <Step title="Resolve Promise">
+    The executor receives the response and resolves the promise.
+  </Step>
+</Steps>
+
+### Storage Management
+
+<Accordion title="Storage API Usage">
+Use `window.selector.storage` to persist data across sessions:
+
+```javascript
+// Save data
+await window.selector.storage.set('key', 'value');
+
+// Retrieve data
+const value = await window.selector.storage.get('key');
+
+// Remove data
+await window.selector.storage.remove('key');
+
+// List all keys
+const keys = await window.selector.storage.keys();
+```
+
+Storage is isolated per wallet ID defined in your manifest.
+</Accordion>
+
+### Opening Wallet UI
+
+<AccordionGroup>
+  <Accordion title="Web Wallet">
+    Open your wallet in a popup window:
+    
+    ```javascript
+    const url = 'https://wallet.example.com/sign?data=' + encodedData;
+    const windowId = await window.selector.open(url, {
+      width: 400,
+      height: 600
+    });
+    ```
+  </Accordion>
+  
+  <Accordion title="Mobile Deep Link">
+    Open native mobile app using custom URL scheme:
+    
+    ```javascript
+    // Try native app with deep link
+    const deepLink = 'mywalletapp://sign?data=' + encodedData;
+    await window.selector.open(deepLink);
+    
+    // Or use universal link
+    const universalLink = 'https://wallet.example.com/app/sign?data=' + encodedData;
+    await window.selector.open(universalLink);
+    ```
+  </Accordion>
+  
+  <Accordion title="In-Frame UI">
+    Show UI directly in the iframe:
+    
+    ```javascript
+    // Show iframe overlay
+    window.selector.ui.showIframe();
+    
+    // Render your UI
+    document.body.innerHTML = '<div>Sign Transaction</div>';
+    
+    // Hide when done
+    window.selector.ui.hideIframe();
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Advanced Patterns
+
+### Using External APIs
+
+If your wallet needs to access external objects (like browser extension APIs):
+
+<CodeGroup>
+```javascript OKX Wallet Example
+// manifest.json
+{
+  "permissions": {
+    "external": ["okxwallet.near"]
+  }
+}
+
+// executor.js
+async function signAndSendTransaction(params) {
+  // Access external wallet object
+  const result = await window.selector.external(
+    'okxwallet.near',
+    'signAndSendTransaction',
+    [params]
+  );
+  
+  return result;
+}
+```
+
+```javascript Nightly Wallet Example
+// manifest.json
+{
+  "permissions": {
+    "external": ["nightly.near"]
+  }
+}
+
+// executor.js
+async function signTransaction(params) {
+  const result = await window.selector.external(
+    'nightly.near',
+    'signTransaction',
+    [transaction]
+  );
+  
+  return result;
+}
+```
+</CodeGroup>
+
+### WalletConnect Integration
+
+For WalletConnect-based wallets:
+
+```javascript walletconnect.js
+async function signIn({ network }) {
+  // Get WalletConnect project ID
+  const projectId = await window.selector.walletConnect.getProjectId();
+  
+  // Initialize connection
+  const { uri } = await window.selector.walletConnect.connect({
+    requiredNamespaces: {
+      near: {
+        methods: ['near_signTransaction'],
+        chains: [network === 'mainnet' ? 'near:mainnet' : 'near:testnet'],
+        events: []
+      }
+    }
+  });
+  
+  // Show QR code with URI
+  showQRCode(uri);
+  
+  // Get session after approval
+  const session = await window.selector.walletConnect.getSession();
+  return extractAccounts(session);
+}
+
+async function signAndSendTransaction(params) {
+  const session = await window.selector.walletConnect.getSession();
+  
+  const result = await window.selector.walletConnect.request({
+    topic: session.topic,
+    chainId: `near:${params.network}`,
+    request: {
+      method: 'near_signAndSendTransaction',
+      params: [params]
+    }
+  });
+  
+  return result;
+}
+```
+
+## Actions Format
+
+NEAR Connect supports both NEAR-JS action format and a simplified format:
+
+<CodeGroup>
+```javascript NEAR-JS Format
+actions: [
+  {
+    type: 'FunctionCall',
+    params: {
+      methodName: 'transfer',
+      args: { receiver_id: 'alice.near', amount: '1000' },
+      gas: '30000000000000',
+      deposit: '0'
+    }
+  }
+]
+```
+
+```javascript Simplified Format
+actions: [
+  {
+    method: 'transfer',
+    params: { receiver_id: 'alice.near', amount: '1000' },
+    gas: '30000000000000',
+    deposit: '0'
+  }
+]
+```
+</CodeGroup>
+
+## Error Handling
+
+```javascript
+async function signAndSendTransaction(params) {
+  try {
+    // Your implementation
+    const result = await signTransaction(params);
+    return result;
+  } catch (error) {
+    // Provide helpful error messages
+    if (error.code === 'USER_REJECTED') {
+      throw new Error('User rejected the transaction');
+    }
+    
+    if (error.code === 'NETWORK_ERROR') {
+      throw new Error('Failed to connect to NEAR network');
+    }
+    
+    // Re-throw with context
+    throw new Error(`Transaction failed: ${error.message}`);
+  }
+}
+```
+
+## Testing Your Executor
+
+<Card title="Debug Mode" icon="flask" href="/wallet-integration/testing">
+  Learn how to test your executor script locally before publishing
+</Card>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Sandbox API Reference" icon="window" href="/wallet-integration/sandbox-api">
+    Complete API documentation for wallet executors
+  </Card>
+  
+  <Card title="Manifest Format" icon="file-code" href="/wallet-integration/manifest-format">
+    Learn about manifest.json configuration
+  </Card>
+</CardGroup>

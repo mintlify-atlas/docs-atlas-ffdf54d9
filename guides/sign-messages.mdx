@@ -1,0 +1,577 @@
+---
+title: 'Sign Messages'
+description: 'Guide for signing arbitrary messages with NEAR wallets for verification and authentication'
+---
+
+## Overview
+
+Message signing allows you to prove ownership of a NEAR account without sending a transaction. This is useful for authentication, verification, and off-chain authorization.
+
+## Basic Message Signing
+
+Sign a message with the connected wallet:
+
+```typescript
+import { NearConnector } from "@hot-labs/near-connect";
+
+const connector = new NearConnector();
+const wallet = await connector.wallet();
+
+const nonce = new Uint8Array(crypto.getRandomValues(new Uint8Array(32)));
+
+const signedMessage = await wallet.signMessage({
+  message: "Hello, NEAR!",
+  recipient: "My dApp",
+  nonce,
+});
+
+console.log(`Signature: ${signedMessage.signature}`);
+console.log(`Public Key: ${signedMessage.publicKey}`);
+console.log(`Account: ${signedMessage.accountId}`);
+```
+
+## Parameters
+
+### message (required)
+
+The message string to sign:
+
+```typescript
+const signedMessage = await wallet.signMessage({
+  message: "Sign this message to prove ownership",
+  recipient: "My dApp",
+  nonce,
+});
+```
+
+### recipient (required)
+
+The name of your application or service:
+
+```typescript
+const signedMessage = await wallet.signMessage({
+  message: "Authentication request",
+  recipient: "Awesome dApp",
+  nonce,
+});
+```
+
+<Tip>
+The recipient helps users understand what they're signing for. Use your dApp's name.
+</Tip>
+
+### nonce (required)
+
+A random 32-byte array to prevent replay attacks:
+
+```typescript
+const nonce = new Uint8Array(
+  window.crypto.getRandomValues(new Uint8Array(32))
+);
+
+const signedMessage = await wallet.signMessage({
+  message: "Authentication",
+  recipient: "My dApp",
+  nonce,
+});
+```
+
+<Warning>
+**Always generate a new random nonce** for each signature request. Never reuse nonces.
+</Warning>
+
+### signerId (optional)
+
+Specify which account should sign (for multi-account wallets):
+
+```typescript
+const accounts = await wallet.getAccounts();
+
+const signedMessage = await wallet.signMessage({
+  message: "Hello",
+  recipient: "My dApp",
+  nonce,
+  signerId: accounts[1].accountId, // Use second account
+});
+```
+
+### network (optional)
+
+Specify which network to use:
+
+```typescript
+const signedMessage = await wallet.signMessage({
+  message: "Test message",
+  recipient: "My dApp",
+  nonce,
+  network: "testnet",
+});
+```
+
+## Response Format
+
+The `signMessage` method returns a `SignedMessage` object:
+
+```typescript
+interface SignedMessage {
+  accountId: string;  // The account that signed
+  publicKey: string;  // Public key in base58 format
+  signature: string;  // Base64-encoded signature
+}
+```
+
+Example response:
+
+```json
+{
+  "accountId": "user.near",
+  "publicKey": "ed25519:8h3j4k5l6m7n8o9p...",
+  "signature": "2FhLHT5..."
+}
+```
+
+## Verification
+
+### Client-Side Verification
+
+<Note>
+Client-side verification is useful for immediate feedback, but always verify on your backend for security.
+</Note>
+
+```typescript
+import { verifySignature } from "@near-js/crypto";
+import { PublicKey } from "@near-js/crypto";
+
+function verifyMessage(
+  signedMessage: SignedMessage,
+  originalMessage: string,
+  originalRecipient: string,
+  originalNonce: Uint8Array
+): boolean {
+  try {
+    // Reconstruct the payload
+    const payload = JSON.stringify({
+      message: originalMessage,
+      recipient: originalRecipient,
+      nonce: Array.from(originalNonce),
+    });
+    
+    // Hash the payload
+    const encoder = new TextEncoder();
+    const payloadBytes = encoder.encode(payload);
+    
+    // Verify signature
+    const publicKey = PublicKey.from(signedMessage.publicKey);
+    const signature = Buffer.from(signedMessage.signature, "base64");
+    
+    return verifySignature(payloadBytes, signature, publicKey);
+  } catch (error) {
+    console.error("Verification failed:", error);
+    return false;
+  }
+}
+```
+
+### Backend Verification
+
+Always verify signatures on your backend:
+
+<CodeGroup>
+```typescript Node.js
+import { createHash } from "crypto";
+import * as nearAPI from "near-api-js";
+
+interface SignedMessage {
+  accountId: string;
+  publicKey: string;
+  signature: string;
+}
+
+export async function verifySignedMessage(
+  signedMessage: SignedMessage,
+  expectedMessage: string,
+  expectedRecipient: string,
+  expectedNonce: Uint8Array
+): Promise<boolean> {
+  try {
+    // Reconstruct the message
+    const payload = JSON.stringify({
+      message: expectedMessage,
+      recipient: expectedRecipient,
+      nonce: Array.from(expectedNonce),
+    });
+    
+    // Hash the payload with SHA-256
+    const hash = createHash("sha256")
+      .update(payload)
+      .digest();
+    
+    // Parse public key and signature
+    const publicKey = nearAPI.utils.PublicKey.from(signedMessage.publicKey);
+    const signature = Buffer.from(signedMessage.signature, "base64");
+    
+    // Verify signature
+    return publicKey.verify(hash, signature);
+  } catch (error) {
+    console.error("Verification error:", error);
+    return false;
+  }
+}
+```
+
+```python Python
+import hashlib
+import json
+import base64
+from typing import Dict, List
+from nacl.signing import VerifyKey
+from nacl.encoding import Base64Encoder
+
+def verify_signed_message(
+    signed_message: Dict[str, str],
+    expected_message: str,
+    expected_recipient: str,
+    expected_nonce: List[int]
+) -> bool:
+    try:
+        # Reconstruct the payload
+        payload = json.dumps({
+            "message": expected_message,
+            "recipient": expected_recipient,
+            "nonce": expected_nonce,
+        }, separators=(',', ':'))
+        
+        # Hash with SHA-256
+        payload_hash = hashlib.sha256(payload.encode()).digest()
+        
+        # Parse public key (remove 'ed25519:' prefix)
+        public_key_str = signed_message["publicKey"].replace("ed25519:", "")
+        public_key_bytes = base64.b64decode(public_key_str)
+        verify_key = VerifyKey(public_key_bytes)
+        
+        # Decode signature
+        signature = base64.b64decode(signed_message["signature"])
+        
+        # Verify
+        verify_key.verify(payload_hash, signature)
+        return True
+    except Exception as e:
+        print(f"Verification error: {e}")
+        return False
+```
+</CodeGroup>
+
+## Use Cases
+
+### Authentication
+
+Use message signing for secure authentication:
+
+<Steps>
+  <Step title="Generate challenge">
+    Generate a random nonce on your backend and send it to the client:
+
+    ```typescript
+    // Backend
+    const challenge = crypto.randomBytes(32);
+    const sessionId = generateSessionId();
+    
+    // Store in session/database
+    await storeChallenge(sessionId, challenge);
+    
+    return { challenge: Array.from(challenge), sessionId };
+    ```
+  </Step>
+
+  <Step title="Sign the challenge">
+    Have the user sign the challenge:
+
+    ```typescript
+    // Frontend
+    const { challenge, sessionId } = await fetch("/api/auth/challenge").then(r => r.json());
+    
+    const nonce = new Uint8Array(challenge);
+    const signedMessage = await wallet.signMessage({
+      message: "Sign in to My dApp",
+      recipient: "My dApp",
+      nonce,
+    });
+    
+    // Send to backend
+    await fetch("/api/auth/verify", {
+      method: "POST",
+      body: JSON.stringify({ signedMessage, sessionId }),
+    });
+    ```
+  </Step>
+
+  <Step title="Verify and create session">
+    Verify the signature and create an authenticated session:
+
+    ```typescript
+    // Backend
+    const { signedMessage, sessionId } = await request.json();
+    const challenge = await getChallenge(sessionId);
+    
+    const isValid = await verifySignedMessage(
+      signedMessage,
+      "Sign in to My dApp",
+      "My dApp",
+      new Uint8Array(challenge)
+    );
+    
+    if (isValid) {
+      await createUserSession(signedMessage.accountId);
+      return { success: true };
+    }
+    
+    return { success: false, error: "Invalid signature" };
+    ```
+  </Step>
+</Steps>
+
+### Off-Chain Authorization
+
+Sign messages to prove authorization for off-chain actions:
+
+```typescript
+// User signs permission
+const signedMessage = await wallet.signMessage({
+  message: JSON.stringify({
+    action: "update_profile",
+    timestamp: Date.now(),
+  }),
+  recipient: "My dApp API",
+  nonce,
+});
+
+// Include in API requests
+await fetch("/api/profile", {
+  method: "PUT",
+  headers: {
+    "X-NEAR-Signature": signedMessage.signature,
+    "X-NEAR-Account": signedMessage.accountId,
+    "X-NEAR-PublicKey": signedMessage.publicKey,
+  },
+  body: JSON.stringify({ name: "New Name" }),
+});
+```
+
+### Proof of Ownership
+
+Prove ownership of an account for verification:
+
+```typescript
+// User proves ownership
+const signedMessage = await wallet.signMessage({
+  message: `I own this account: ${accountId}`,
+  recipient: "Verification Service",
+  nonce,
+});
+
+// Submit for verification
+await fetch("/api/verify-ownership", {
+  method: "POST",
+  body: JSON.stringify({
+    accountId,
+    signedMessage,
+  }),
+});
+```
+
+## Sign In and Sign Message
+
+You can combine sign-in with message signing for streamlined authentication. See the [Sign In guide](/guides/sign-in) for details:
+
+```typescript
+const nonce = new Uint8Array(crypto.getRandomValues(new Uint8Array(32)));
+
+await connector.connect({
+  signMessageParams: {
+    message: "Sign in to My dApp",
+    recipient: "My dApp",
+    nonce,
+  },
+});
+
+connector.on("wallet:signInAndSignMessage", async (event) => {
+  const account = event.accounts[0];
+  console.log(`Signed message: ${account.signedMessage.signature}`);
+});
+```
+
+## Complete Example
+
+<CodeGroup>
+```tsx React Component
+import { FC, useState } from "react";
+import { NearWalletBase, SignedMessage } from "@hot-labs/near-connect";
+
+interface Props {
+  wallet: NearWalletBase;
+}
+
+export const MessageSigner: FC<Props> = ({ wallet }) => {
+  const [message, setMessage] = useState("");
+  const [signed, setSigned] = useState<SignedMessage>();
+  const [loading, setLoading] = useState(false);
+
+  const handleSign = async () => {
+    if (!message) return;
+    
+    setLoading(true);
+    try {
+      const nonce = new Uint8Array(
+        window.crypto.getRandomValues(new Uint8Array(32))
+      );
+      
+      const signedMessage = await wallet.signMessage({
+        message,
+        recipient: "Message Signing Demo",
+        nonce,
+      });
+      
+      setSigned(signedMessage);
+      
+      // Send to backend for verification
+      const response = await fetch("/api/verify-message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signedMessage,
+          originalMessage: message,
+          nonce: Array.from(nonce),
+        }),
+      });
+      
+      const { verified } = await response.json();
+      if (verified) {
+        alert("Message verified successfully!");
+      }
+    } catch (error) {
+      console.error("Signing failed:", error);
+      alert("Failed to sign message");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <textarea
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        placeholder="Enter message to sign"
+      />
+      
+      <button onClick={handleSign} disabled={loading || !message}>
+        {loading ? "Signing..." : "Sign Message"}
+      </button>
+      
+      {signed && (
+        <div>
+          <h3>Signed Message</h3>
+          <p>Account: {signed.accountId}</p>
+          <p>Public Key: {signed.publicKey}</p>
+          <p>Signature: {signed.signature.slice(0, 20)}...</p>
+        </div>
+      )}
+    </div>
+  );
+};
+```
+
+```typescript Backend API (Express)
+import express from "express";
+import { verifySignedMessage } from "./verify";
+
+const app = express();
+app.use(express.json());
+
+app.post("/api/verify-message", async (req, res) => {
+  const { signedMessage, originalMessage, nonce } = req.body;
+  
+  try {
+    const verified = await verifySignedMessage(
+      signedMessage,
+      originalMessage,
+      "Message Signing Demo",
+      new Uint8Array(nonce)
+    );
+    
+    if (verified) {
+      // Create session, grant access, etc.
+      return res.json({ verified: true });
+    }
+    
+    return res.status(401).json({ 
+      verified: false, 
+      error: "Invalid signature" 
+    });
+  } catch (error) {
+    console.error("Verification error:", error);
+    return res.status(500).json({ 
+      verified: false, 
+      error: "Verification failed" 
+    });
+  }
+});
+```
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always use random nonces">
+    Generate a new random 32-byte nonce for every signature request. Never reuse nonces, as this enables replay attacks.
+  </Accordion>
+
+  <Accordion title="Store nonces securely">
+    Store nonces in a secure session store or database with expiration. Clear used nonces after verification.
+  </Accordion>
+
+  <Accordion title="Verify on the backend">
+    Never trust client-side verification alone. Always verify signatures on your backend server.
+  </Accordion>
+
+  <Accordion title="Include timestamps">
+    Consider including timestamps in your messages to prevent old signatures from being reused:
+    ```typescript
+    const message = JSON.stringify({
+      action: "login",
+      timestamp: Date.now(),
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Clear messaging to users">
+    Use clear, descriptive messages and recipients so users understand what they're signing.
+  </Accordion>
+
+  <Accordion title="Handle wallet rejection">
+    Always handle cases where users reject the signature request:
+    ```typescript
+    try {
+      const signed = await wallet.signMessage(params);
+    } catch (error) {
+      if (error.message.includes("rejected")) {
+        // User rejected
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Sign In" icon="arrow-right-to-bracket" href="/guides/sign-in">
+    Learn about signInAndSignMessage for combined authentication
+  </Card>
+  <Card title="Sign Transactions" icon="signature" href="/guides/sign-transactions">
+    Sign and send transactions on NEAR
+  </Card>
+  <Card title="Event Handling" icon="bolt" href="/guides/event-handling">
+    Handle wallet events in your application
+  </Card>
+</CardGroup>

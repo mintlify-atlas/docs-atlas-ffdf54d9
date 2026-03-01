@@ -1,0 +1,506 @@
+---
+title: NearWalletBase
+description: The core interface that all NEAR wallet implementations must implement. Use this interface when working with wallet instances.
+---
+
+## Overview
+
+`NearWalletBase` is the interface that all wallet implementations (injected, sandboxed, parent frame, etc.) must implement. When you call `connector.wallet()` or `connector.connect()`, you receive an instance implementing this interface.
+
+## Properties
+
+<ResponseField name="manifest" type="WalletManifest" required>
+  Wallet metadata and capabilities
+  ```typescript
+  {
+    id: string;
+    platform: string[];
+    name: string;
+    icon: string;
+    description: string;
+    website: string;
+    version: string;
+    executor: string;
+    type: "sandbox" | "injected";
+    permissions: WalletPermissions;
+    features: WalletFeatures;
+    debug?: boolean;
+  }
+  ```
+</ResponseField>
+
+## Methods
+
+### signIn()
+
+Programmatically sign in to the wallet. For hardware wallets (e.g., Ledger), `derivationPaths` may be required to validate access key permissions.
+
+<ParamField path="data" type="SignInParams" optional>
+  <Expandable title="properties">
+    <ParamField path="network" type="Network" optional>
+      Network to sign in to: `"mainnet"` or `"testnet"`
+    </ParamField>
+
+    <ParamField path="contractId" type="string" optional>
+      Contract ID to add a limited-access key for
+    </ParamField>
+
+    <ParamField path="methodNames" type="string[]" optional>
+      Method names the limited-access key can call
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Promise<Account[]>">
+  Resolves with an array of connected accounts
+</ResponseField>
+
+```typescript
+const accounts = await wallet.signIn({
+  network: 'mainnet',
+  contractId: 'mycontract.near',
+  methodNames: ['method1', 'method2'],
+});
+
+console.log('Signed in as:', accounts[0].accountId);
+```
+
+### signInAndSignMessage()
+
+Sign in and immediately sign a message. This is useful for verifying account ownership during sign-in without additional steps.
+
+<ParamField path="data" type="SignInAndSignMessageParams" required>
+  <Expandable title="properties">
+    <ParamField path="network" type="Network" optional>
+      Network to sign in to
+    </ParamField>
+
+    <ParamField path="contractId" type="string" optional>
+      Contract ID for limited-access key
+    </ParamField>
+
+    <ParamField path="methodNames" type="string[]" optional>
+      Method names for limited-access key
+    </ParamField>
+
+    <ParamField path="messageParams" type="SignMessageDuringSignInParams" required>
+      Message parameters
+      ```typescript
+      {
+        message: string;
+        recipient: string;
+        nonce: Uint8Array;
+      }
+      ```
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Promise<AccountWithSignedMessage[]>">
+  Resolves with accounts and their signed messages
+</ResponseField>
+
+```typescript
+const accounts = await wallet.signInAndSignMessage({
+  network: 'mainnet',
+  messageParams: {
+    message: 'Login to MyApp',
+    recipient: 'myapp.near',
+    nonce: crypto.getRandomValues(new Uint8Array(32)),
+  },
+});
+
+const { accountId, signedMessage } = accounts[0];
+console.log('Signed in:', accountId);
+console.log('Signature:', signedMessage.signature);
+```
+
+### signOut()
+
+Sign out from the wallet.
+
+<ParamField path="data" type="object" optional>
+  <Expandable title="properties">
+    <ParamField path="network" type="Network" optional>
+      Network to sign out from
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Promise<void>">
+  Resolves when sign out is complete
+</ResponseField>
+
+```typescript
+await wallet.signOut({ network: 'mainnet' });
+```
+
+### getAccounts()
+
+Retrieve all currently signed-in accounts. Some wallets (e.g., WalletConnect) support multiple accounts simultaneously.
+
+<ParamField path="data" type="object" optional>
+  <Expandable title="properties">
+    <ParamField path="network" type="Network" optional>
+      Network to get accounts for
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Promise<Account[]>">
+  Resolves with an array of accounts
+</ResponseField>
+
+```typescript
+const accounts = await wallet.getAccounts({ network: 'mainnet' });
+accounts.forEach(account => {
+  console.log('Account:', account.accountId);
+  console.log('Public Key:', account.publicKey);
+});
+```
+
+### signAndSendTransaction()
+
+Sign and send a transaction to the NEAR network. The user must be signed in as there are gas charges.
+
+<ParamField path="params" type="SignAndSendTransactionParams" required>
+  <Expandable title="properties">
+    <ParamField path="network" type="Network" optional>
+      Network to send the transaction to
+    </ParamField>
+
+    <ParamField path="signerId" type="string" optional>
+      Account ID to sign the transaction. Required for wallets supporting multiple accounts.
+    </ParamField>
+
+    <ParamField path="receiverId" type="string" required>
+      The recipient account ID
+    </ParamField>
+
+    <ParamField path="actions" type="Array<Action | ConnectorAction>" required>
+      Array of actions to execute. Can use NEAR JS SDK actions or ConnectorAction format.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Promise<FinalExecutionOutcome>">
+  Resolves with the transaction execution result
+</ResponseField>
+
+```typescript
+import { nearActionsToConnectorActions } from '@near-connect/core';
+
+const outcome = await wallet.signAndSendTransaction({
+  receiverId: 'contract.near',
+  actions: [
+    {
+      type: 'FunctionCall',
+      params: {
+        methodName: 'my_method',
+        args: { param1: 'value1' },
+        gas: '30000000000000',
+        deposit: '0',
+      },
+    },
+  ],
+});
+
+console.log('Transaction hash:', outcome.transaction.hash);
+```
+
+### signAndSendTransactions()
+
+Sign and send multiple transactions atomically. All transactions must succeed or all will fail.
+
+<ParamField path="params" type="SignAndSendTransactionsParams" required>
+  <Expandable title="properties">
+    <ParamField path="network" type="Network" optional>
+      Network to send transactions to
+    </ParamField>
+
+    <ParamField path="signerId" type="string" optional>
+      Account ID to sign the transactions
+    </ParamField>
+
+    <ParamField path="transactions" type="Array<{ receiverId: string; actions: Array<Action | ConnectorAction> }>" required>
+      Array of transactions to execute
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Promise<FinalExecutionOutcome[]>">
+  Resolves with an array of transaction execution results
+</ResponseField>
+
+```typescript
+const outcomes = await wallet.signAndSendTransactions({
+  transactions: [
+    {
+      receiverId: 'contract1.near',
+      actions: [{ type: 'Transfer', params: { deposit: '1000000000000000000000000' } }],
+    },
+    {
+      receiverId: 'contract2.near',
+      actions: [{
+        type: 'FunctionCall',
+        params: {
+          methodName: 'callback',
+          args: {},
+          gas: '30000000000000',
+          deposit: '0',
+        },
+      }],
+    },
+  ],
+});
+
+outcomes.forEach((outcome, i) => {
+  console.log(`Transaction ${i} hash:`, outcome.transaction.hash);
+});
+```
+
+### signMessage()
+
+Sign an arbitrary message for verification purposes. Useful for authentication or proving account ownership.
+
+<ParamField path="params" type="SignMessageParams" required>
+  <Expandable title="properties">
+    <ParamField path="message" type="string" required>
+      The message to sign
+    </ParamField>
+
+    <ParamField path="recipient" type="string" required>
+      Intended recipient of the message (e.g., your app's domain)
+    </ParamField>
+
+    <ParamField path="nonce" type="Uint8Array" required>
+      A unique nonce to prevent replay attacks (32 bytes recommended)
+    </ParamField>
+
+    <ParamField path="network" type="Network" optional>
+      Network context for the signature
+    </ParamField>
+
+    <ParamField path="signerId" type="string" optional>
+      Account ID to sign with (for multi-account wallets)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Promise<SignedMessage>">
+  Resolves with the signed message
+  ```typescript
+  {
+    accountId: string;
+    publicKey: string;
+    signature: string;
+  }
+  ```
+</ResponseField>
+
+```typescript
+const signedMessage = await wallet.signMessage({
+  message: 'Please verify my account ownership',
+  recipient: 'myapp.near',
+  nonce: crypto.getRandomValues(new Uint8Array(32)),
+  network: 'mainnet',
+});
+
+console.log('Signature:', signedMessage.signature);
+// Send to backend for verification
+```
+
+### signDelegateActions()
+
+Sign delegate actions using NEP-366. Delegate actions allow meta-transactions where gas fees can be paid by a relayer.
+
+<ParamField path="params" type="SignDelegateActionsParams" required>
+  <Expandable title="properties">
+    <ParamField path="network" type="Network" optional>
+      Network to sign for
+    </ParamField>
+
+    <ParamField path="signerId" type="string" optional>
+      Account ID to sign with
+    </ParamField>
+
+    <ParamField path="delegateActions" type="Array<{ actions: Array<Action | ConnectorAction>; receiverId: string }>" required>
+      Array of delegate actions to sign
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Promise<SignDelegateActionsResponse>">
+  Resolves with signed delegate actions
+  ```typescript
+  {
+    signedDelegateActions: Array<{
+      delegateHash: Uint8Array;
+      signedDelegate: SignedDelegate;
+    }>;
+  }
+  ```
+</ResponseField>
+
+```typescript
+const result = await wallet.signDelegateActions({
+  delegateActions: [
+    {
+      receiverId: 'contract.near',
+      actions: [
+        {
+          type: 'FunctionCall',
+          params: {
+            methodName: 'my_method',
+            args: { key: 'value' },
+            gas: '30000000000000',
+            deposit: '0',
+          },
+        },
+      ],
+    },
+  ],
+});
+
+// Send to relayer for execution
+const signedDelegate = result.signedDelegateActions[0].signedDelegate;
+```
+
+## Type Definitions
+
+### WalletManifest
+
+```typescript
+interface WalletManifest {
+  id: string;
+  platform: string[];
+  name: string;
+  icon: string;
+  description: string;
+  website: string;
+  version: string;
+  executor: string;
+  type: "sandbox" | "injected";
+  permissions: WalletPermissions;
+  features: WalletFeatures;
+  debug?: boolean;
+}
+```
+
+### WalletFeatures
+
+```typescript
+interface WalletFeatures {
+  signMessage: boolean;
+  signTransaction: boolean;
+  signAndSendTransaction: boolean;
+  signAndSendTransactions: boolean;
+  signInWithoutAddKey: boolean;
+  signInAndSignMessage: boolean;
+  signDelegateActions: boolean;
+  mainnet: boolean;
+  testnet: boolean;
+}
+```
+
+### WalletPermissions
+
+```typescript
+interface WalletPermissions {
+  storage?: boolean;
+  external?: string[];
+  walletConnect?: boolean;
+  allowsOpen?: string[];
+  clipboardRead?: boolean;
+  clipboardWrite?: boolean;
+  usb?: boolean;
+  hid?: boolean;
+}
+```
+
+### ConnectorAction
+
+Connector actions are a simplified format for NEAR actions:
+
+```typescript
+type ConnectorAction =
+  | { type: "CreateAccount" }
+  | { type: "DeployContract"; params: { code: Uint8Array } }
+  | { type: "FunctionCall"; params: { methodName: string; args: object; gas: string; deposit: string } }
+  | { type: "Transfer"; params: { deposit: string } }
+  | { type: "Stake"; params: { stake: string; publicKey: string } }
+  | { type: "AddKey"; params: { publicKey: string; accessKey: { ... } } }
+  | { type: "DeleteKey"; params: { publicKey: string } }
+  | { type: "DeleteAccount"; params: { beneficiaryId: string } }
+  | { type: "UseGlobalContract"; params: { contractIdentifier: { accountId: string } | { codeHash: string } } }
+  | { type: "DeployGlobalContract"; params: { code: Uint8Array; deployMode: "CodeHash" | "AccountId" } };
+```
+
+Use `nearActionsToConnectorActions()` to convert from NEAR JS SDK actions:
+
+```typescript
+import { nearActionsToConnectorActions } from '@near-connect/core';
+import { functionCall } from '@near-js/transactions';
+
+const nearActions = [
+  functionCall('method', { arg: 'value' }, 30000000000000n, 0n),
+];
+
+const connectorActions = nearActionsToConnectorActions(nearActions);
+```
+
+### Account
+
+```typescript
+interface Account {
+  accountId: string;
+  publicKey?: string;
+}
+```
+
+### FinalExecutionOutcome
+
+See [@near-js/types documentation](https://github.com/near/near-api-js/tree/master/packages/types) for the complete `FinalExecutionOutcome` type definition.
+
+## Usage Example
+
+```typescript
+import { NearConnector } from '@near-connect/core';
+
+const connector = new NearConnector({ network: 'mainnet' });
+
+// Connect to wallet
+const wallet = await connector.connect();
+
+// Check wallet capabilities
+if (wallet.manifest.features.signMessage) {
+  // Sign a message
+  const signed = await wallet.signMessage({
+    message: 'Verify ownership',
+    recipient: 'myapp.near',
+    nonce: crypto.getRandomValues(new Uint8Array(32)),
+  });
+}
+
+// Get accounts
+const accounts = await wallet.getAccounts();
+console.log('Accounts:', accounts);
+
+// Send transaction
+const outcome = await wallet.signAndSendTransaction({
+  receiverId: 'contract.near',
+  actions: [
+    {
+      type: 'FunctionCall',
+      params: {
+        methodName: 'my_method',
+        args: { key: 'value' },
+        gas: '30000000000000',
+        deposit: '0',
+      },
+    },
+  ],
+});
+
+console.log('Success:', outcome.status);
+```

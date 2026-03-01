@@ -1,0 +1,353 @@
+---
+title: Installation
+description: Install NEAR Connect in your JavaScript or TypeScript project
+---
+
+## Package Installation
+
+NEAR Connect is available as an npm package. Choose your preferred package manager:
+
+<CodeGroup>
+
+```bash npm
+npm install @hot-labs/near-connect
+```
+
+```bash yarn
+yarn add @hot-labs/near-connect
+```
+
+```bash pnpm
+pnpm add @hot-labs/near-connect
+```
+
+</CodeGroup>
+
+<Info>
+  NEAR Connect has **zero dependencies**, making it perfect for bundle size-conscious applications.
+</Info>
+
+## Version Requirements
+
+<AccordionGroup>
+  <Accordion title="Node.js">
+    Node.js 16 or higher is recommended for development. The library works in all modern browsers.
+  </Accordion>
+  
+  <Accordion title="TypeScript">
+    TypeScript 5.0+ is recommended. Full type definitions are included in the package.
+  </Accordion>
+  
+  <Accordion title="Browser Support">
+    NEAR Connect supports all modern browsers:
+    - Chrome/Edge 90+
+    - Firefox 88+
+    - Safari 14+
+    - Opera 76+
+  </Accordion>
+</AccordionGroup>
+
+## Optional: WalletConnect Support
+
+Some wallets (like mobile wallets) require WalletConnect to function. If you want to support these wallets, install the WalletConnect client:
+
+<CodeGroup>
+
+```bash npm
+npm install @walletconnect/sign-client
+```
+
+```bash yarn
+yarn add @walletconnect/sign-client
+```
+
+```bash pnpm
+pnpm add @walletconnect/sign-client
+```
+
+</CodeGroup>
+
+<Note>
+  You'll need a free WalletConnect project ID. Get one at [WalletConnect Cloud](https://cloud.walletconnect.com).
+</Note>
+
+### WalletConnect Setup Example
+
+```typescript
+import SignClient from "@walletconnect/sign-client";
+import { NearConnector } from "@hot-labs/near-connect";
+
+const walletConnect = SignClient.init({
+  projectId: "YOUR_PROJECT_ID",
+  metadata: {
+    name: "Your App Name",
+    description: "Your App Description",
+    url: "https://yourapp.com",
+    icons: ["https://yourapp.com/icon.png"],
+  },
+});
+
+const connector = new NearConnector({ walletConnect });
+```
+
+<Warning>
+  Without WalletConnect configuration, wallets that require it will not appear in the wallet selection modal.
+</Warning>
+
+## Optional: NEAR API JS
+
+If you need to construct transactions using `near-api-js` action creators, install the transactions package:
+
+<CodeGroup>
+
+```bash npm
+npm install @near-js/transactions
+```
+
+```bash yarn
+yarn add @near-js/transactions
+```
+
+```bash pnpm
+pnpm add @near-js/transactions
+```
+
+</CodeGroup>
+
+### Using NEAR API JS Actions
+
+```typescript
+import { transactions } from "@near-js/transactions";
+import { nearActionsToConnectorActions } from "@hot-labs/near-connect";
+
+// Create actions using near-api-js
+const actions = [
+  transactions.functionCall(
+    "set_greeting",
+    { greeting: "Hello, NEAR!" },
+    BigInt(30000000000000), // gas
+    BigInt(0) // deposit
+  ),
+];
+
+// Use them with NEAR Connect
+await wallet.signAndSendTransaction({
+  receiverId: "contract.near",
+  actions: nearActionsToConnectorActions(actions),
+});
+```
+
+<Info>
+  NEAR Connect also supports the legacy `near-wallet-selector` action format for backward compatibility.
+</Info>
+
+## Import Methods
+
+### ES Modules (Recommended)
+
+```typescript
+import { NearConnector } from "@hot-labs/near-connect";
+
+const connector = new NearConnector();
+```
+
+### CommonJS
+
+```javascript
+const { NearConnector } = require("@hot-labs/near-connect");
+
+const connector = new NearConnector();
+```
+
+### CDN (Browser)
+
+```html
+<script type="module">
+  import { NearConnector } from "https://cdn.jsdelivr.net/npm/@hot-labs/near-connect/+esm";
+  
+  const connector = new NearConnector();
+  await connector.connect();
+</script>
+```
+
+## Verify Installation
+
+Create a simple test file to verify your installation:
+
+```typescript test.ts
+import { NearConnector } from "@hot-labs/near-connect";
+
+const connector = new NearConnector();
+
+console.log("NEAR Connect initialized successfully!");
+console.log("Available wallets:", connector.availableWallets.length);
+```
+
+Run it:
+
+```bash
+node test.ts
+```
+
+You should see output confirming the connector initialized and listing available wallets.
+
+## TypeScript Configuration
+
+For optimal TypeScript support, ensure your `tsconfig.json` includes:
+
+```json tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "esModuleInterop": true
+  }
+}
+```
+
+## Framework-Specific Notes
+
+<Tabs>
+  <Tab title="React">
+    ```typescript
+    import { useEffect, useState } from "react";
+    import { NearConnector, NearWalletBase } from "@hot-labs/near-connect";
+
+    function App() {
+      const [connector] = useState(() => new NearConnector());
+      const [wallet, setWallet] = useState<NearWalletBase>();
+
+      useEffect(() => {
+        connector.on("wallet:signIn", async () => {
+          const w = await connector.wallet();
+          setWallet(w);
+        });
+      }, [connector]);
+
+      return (
+        <button onClick={() => connector.connect()}>
+          Connect Wallet
+        </button>
+      );
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Vue">
+    ```typescript
+    import { ref, onMounted } from "vue";
+    import { NearConnector } from "@hot-labs/near-connect";
+
+    export default {
+      setup() {
+        const connector = new NearConnector();
+        const wallet = ref(null);
+
+        onMounted(() => {
+          connector.on("wallet:signIn", async () => {
+            wallet.value = await connector.wallet();
+          });
+        });
+
+        return {
+          connector,
+          wallet,
+          connect: () => connector.connect(),
+        };
+      },
+    };
+    ```
+  </Tab>
+  
+  <Tab title="Svelte">
+    ```typescript
+    <script lang="ts">
+      import { onMount } from "svelte";
+      import { NearConnector } from "@hot-labs/near-connect";
+
+      const connector = new NearConnector();
+      let wallet = null;
+
+      onMount(() => {
+        connector.on("wallet:signIn", async () => {
+          wallet = await connector.wallet();
+        });
+      });
+
+      function connect() {
+        connector.connect();
+      }
+    </script>
+
+    <button on:click={connect}>Connect Wallet</button>
+    ```
+  </Tab>
+  
+  <Tab title="Next.js">
+    ```typescript
+    "use client";
+
+    import { useEffect, useState } from "react";
+    import { NearConnector } from "@hot-labs/near-connect";
+
+    export default function WalletButton() {
+      const [connector, setConnector] = useState<NearConnector>();
+
+      useEffect(() => {
+        // Initialize only on client side
+        const conn = new NearConnector();
+        setConnector(conn);
+      }, []);
+
+      if (!connector) return null;
+
+      return (
+        <button onClick={() => connector.connect()}>
+          Connect Wallet
+        </button>
+      );
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Module not found error">
+    Make sure you've installed the package:
+    ```bash
+    npm install @hot-labs/near-connect
+    ```
+    
+    If using TypeScript, ensure `moduleResolution` is set to `"bundler"` or `"node"` in `tsconfig.json`.
+  </Accordion>
+  
+  <Accordion title="No wallets appearing">
+    This usually means the manifest couldn't be loaded. Check your network connection and ensure your app can make requests to:
+    - `https://raw.githubusercontent.com/hot-dao/near-selector/refs/heads/main/repository/manifest.json`
+    
+    You can also provide a custom manifest URL or object in the constructor.
+  </Accordion>
+  
+  <Accordion title="WalletConnect wallets not showing">
+    Ensure you've:
+    1. Installed `@walletconnect/sign-client`
+    2. Created a project at https://cloud.walletconnect.com
+    3. Passed the `walletConnect` option to `NearConnector`
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Build your first wallet integration
+  </Card>
+  <Card title="dApp Integration" icon="book" href="/guides/dapp-integration">
+    Learn integration best practices
+  </Card>
+</CardGroup>

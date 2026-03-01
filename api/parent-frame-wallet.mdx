@@ -1,0 +1,377 @@
+---
+title: 'ParentFrameWallet'
+description: 'Wallet implementation for iframe-embedded applications that communicate with a parent frame'
+---
+
+## Overview
+
+The `ParentFrameWallet` class enables wallet functionality for applications running inside an iframe by communicating with the parent frame via the `postMessage` API. This is useful for embedded applications that need to delegate wallet operations to their parent context.
+
+## Constructor
+
+```typescript
+constructor(connector: NearConnector, manifest: WalletManifest)
+```
+
+<ParamField path="connector" type="NearConnector" required>
+  The NEAR connector instance that manages the connection to the NEAR network.
+</ParamField>
+
+<ParamField path="manifest" type="WalletManifest" required>
+  The wallet manifest containing metadata and configuration for the wallet.
+</ParamField>
+
+## Properties
+
+<ResponseField name="connector" type="NearConnector">
+  Reference to the NEAR connector instance.
+</ResponseField>
+
+<ResponseField name="manifest" type="WalletManifest">
+  The wallet manifest configuration.
+</ResponseField>
+
+## Core Method
+
+### callParentFrame
+
+The internal method that handles all communication with the parent frame.
+
+```typescript
+callParentFrame(method: string, params: any): Promise<any>
+```
+
+<ParamField path="method" type="string" required>
+  The method name to call on the parent frame (e.g., "near:signIn", "near:signAndSendTransaction").
+</ParamField>
+
+<ParamField path="params" type="any" required>
+  Parameters to pass to the parent frame method.
+</ParamField>
+
+**Returns:** Promise that resolves with the result from the parent frame or rejects with an error.
+
+<Info>
+This method uses the `postMessage` API with message type "near-wallet-injected-request" and listens for "near-wallet-injected-response" messages. Each request is assigned a unique ID using UUID v4 for matching responses.
+</Info>
+
+## Wallet Methods
+
+### signIn
+
+Initiate the sign-in process via the parent frame.
+
+```typescript
+async signIn(data?: {
+  network?: Network;
+  contractId?: string;
+  methodNames?: Array<string>;
+}): Promise<Array<Account>>
+```
+
+<ParamField path="data.network" type="Network">
+  The NEAR network to connect to ("mainnet" or "testnet"). Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="data.contractId" type="string">
+  Optional contract ID for limited access key permissions.
+</ParamField>
+
+<ParamField path="data.methodNames" type="string[]">
+  Optional array of method names for limited access key permissions.
+</ParamField>
+
+**Returns:** Promise resolving to an array of signed-in accounts.
+
+<Note>
+If the parent frame returns a single account object, it will be wrapped in an array for consistency.
+</Note>
+
+### signInAndSignMessage
+
+Sign in and simultaneously sign a message via the parent frame.
+
+```typescript
+async signInAndSignMessage(
+  data: SignInAndSignMessageParams
+): Promise<Array<AccountWithSignedMessage>>
+```
+
+<ParamField path="data.network" type="Network">
+  The NEAR network to connect to. Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="data.contractId" type="string">
+  Optional contract ID for access key permissions.
+</ParamField>
+
+<ParamField path="data.methodNames" type="string[]">
+  Optional array of method names for access key permissions.
+</ParamField>
+
+<ParamField path="data.messageParams" type="SignMessageDuringSignInParams" required>
+  Parameters for the message to be signed during sign-in.
+</ParamField>
+
+**Returns:** Promise resolving to an array of accounts with signed messages.
+
+<Note>
+If the parent frame returns a single account object, it will be wrapped in an array for consistency.
+</Note>
+
+### signOut
+
+Sign out via the parent frame.
+
+```typescript
+async signOut(data?: { network?: Network }): Promise<void>
+```
+
+<ParamField path="data.network" type="Network">
+  The NEAR network to sign out from. Defaults to the connector's network.
+</ParamField>
+
+### getAccounts
+
+Retrieve currently signed-in accounts from the parent frame.
+
+```typescript
+async getAccounts(data?: { network?: Network }): Promise<Array<Account>>
+```
+
+<ParamField path="data.network" type="Network">
+  The NEAR network to query. Defaults to the connector's network.
+</ParamField>
+
+**Returns:** Promise resolving to an array of signed-in accounts.
+
+### signAndSendTransaction
+
+Sign and send a transaction through the parent frame.
+
+```typescript
+async signAndSendTransaction(
+  params: SignAndSendTransactionParams
+): Promise<FinalExecutionOutcome>
+```
+
+<ParamField path="params.receiverId" type="string" required>
+  The account ID that will receive the transaction.
+</ParamField>
+
+<ParamField path="params.actions" type="Array<Action>" required>
+  Array of NEAR actions to include in the transaction.
+</ParamField>
+
+<ParamField path="params.network" type="Network">
+  The NEAR network for the transaction. Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="params.signerId" type="string">
+  Optional account ID of the transaction signer.
+</ParamField>
+
+**Returns:** Promise resolving to the final execution outcome of the transaction.
+
+### signAndSendTransactions
+
+Sign and send multiple transactions through the parent frame.
+
+```typescript
+async signAndSendTransactions(
+  params: SignAndSendTransactionsParams
+): Promise<Array<FinalExecutionOutcome>>
+```
+
+<ParamField path="params.transactions" type="Array<Transaction>" required>
+  Array of transactions, each containing a receiverId and actions.
+</ParamField>
+
+<ParamField path="params.network" type="Network">
+  The NEAR network for the transactions. Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="params.signerId" type="string">
+  Optional account ID of the transaction signer.
+</ParamField>
+
+**Returns:** Promise resolving to an array of final execution outcomes.
+
+### signMessage
+
+Sign a message via the parent frame.
+
+```typescript
+async signMessage(params: SignMessageParams): Promise<SignedMessage>
+```
+
+<ParamField path="params.message" type="string" required>
+  The message to be signed.
+</ParamField>
+
+<ParamField path="params.recipient" type="string" required>
+  The intended recipient of the signed message.
+</ParamField>
+
+<ParamField path="params.nonce" type="Uint8Array" required>
+  A unique nonce to prevent replay attacks.
+</ParamField>
+
+<ParamField path="params.network" type="Network">
+  The NEAR network. Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="params.signerId" type="string">
+  Optional account ID of the message signer.
+</ParamField>
+
+**Returns:** Promise resolving to the signed message with signature.
+
+### signDelegateActions
+
+Sign delegate actions for meta-transactions via the parent frame.
+
+```typescript
+async signDelegateActions(
+  params: SignDelegateActionsParams
+): Promise<SignDelegateActionsResponse>
+```
+
+<ParamField path="params.delegateActions" type="Array<DelegateAction>" required>
+  Array of delegate actions, each containing a receiverId and actions.
+</ParamField>
+
+<ParamField path="params.network" type="Network">
+  The NEAR network. Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="params.signerId" type="string">
+  Optional account ID of the signer.
+</ParamField>
+
+**Returns:** Promise resolving to signed delegate actions.
+
+## Usage Example
+
+```typescript
+import { ParentFrameWallet } from 'near-connect';
+
+// In an iframe-embedded application
+const wallet = new ParentFrameWallet(connector, walletManifest);
+
+// Sign in via parent frame
+const accounts = await wallet.signIn({
+  network: 'testnet'
+});
+
+// Send a transaction through parent frame
+const outcome = await wallet.signAndSendTransaction({
+  receiverId: 'example.testnet',
+  actions: [
+    {
+      type: 'FunctionCall',
+      params: {
+        methodName: 'myMethod',
+        args: { value: 42 },
+        gas: '30000000000000',
+        deposit: '0'
+      }
+    }
+  ]
+});
+```
+
+## Parent Frame Implementation
+
+The parent frame must implement a message listener to handle requests from the embedded application:
+
+```javascript
+window.addEventListener('message', async (event) => {
+  if (event.data.type === 'near-wallet-injected-request') {
+    const { id, method, params } = event.data;
+    
+    try {
+      let result;
+      
+      switch (method) {
+        case 'near:signIn':
+          result = await handleSignIn(params);
+          break;
+        case 'near:signAndSendTransaction':
+          result = await handleTransaction(params);
+          break;
+        // ... handle other methods
+      }
+      
+      // Send success response
+      event.source.postMessage({
+        type: 'near-wallet-injected-response',
+        id,
+        success: true,
+        result
+      }, event.origin);
+    } catch (error) {
+      // Send error response
+      event.source.postMessage({
+        type: 'near-wallet-injected-response',
+        id,
+        success: false,
+        error: error.message
+      }, event.origin);
+    }
+  }
+});
+```
+
+## Security Considerations
+
+<Warning>
+The `callParentFrame` method uses `postMessage` with `"*"` as the target origin, which allows communication with any parent frame. In production, you should validate the parent frame's origin and use a specific origin instead of `"*"`.
+</Warning>
+
+<Tip>
+Always verify that your application is running in an iframe before using `ParentFrameWallet` to avoid errors when trying to communicate with a non-existent parent frame.
+</Tip>
+
+```typescript
+if (window.self !== window.top) {
+  // Safe to use ParentFrameWallet
+  const wallet = new ParentFrameWallet(connector, manifest);
+} else {
+  // Use a different wallet implementation
+}
+```
+
+## Message Protocol
+
+The communication protocol uses the following message format:
+
+**Request (iframe → parent):**
+```json
+{
+  "type": "near-wallet-injected-request",
+  "id": "unique-uuid-v4",
+  "method": "near:signIn",
+  "params": { /* method parameters */ }
+}
+```
+
+**Response (parent → iframe):**
+```json
+{
+  "type": "near-wallet-injected-response",
+  "id": "unique-uuid-v4",
+  "success": true,
+  "result": { /* method result */ }
+}
+```
+
+**Error Response:**
+```json
+{
+  "type": "near-wallet-injected-response",
+  "id": "unique-uuid-v4",
+  "success": false,
+  "error": "Error message"
+}
+```

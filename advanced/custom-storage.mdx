@@ -1,0 +1,490 @@
+---
+title: Custom Storage Providers
+description: Implement custom storage providers to control how NEAR Connect persists data
+---
+
+## Overview
+
+NEAR Connect uses a storage abstraction layer to persist user preferences and wallet connection state. By default, it uses `localStorage` in the browser, but you can provide a custom storage implementation to use alternative storage mechanisms like IndexedDB, cookies, or server-side storage.
+
+## Storage Interface
+
+Custom storage providers must implement the `DataStorage` interface, which defines three async methods:
+
+```typescript /home/daytona/workspace/source/src/helpers/storage.ts:1-5
+export interface DataStorage {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<void>;
+  remove(key: string): Promise<void>;
+}
+```
+
+<Note>
+  All storage methods are asynchronous to support both synchronous (localStorage) and asynchronous (IndexedDB, network calls) storage backends.
+</Note>
+
+## Default Implementation: LocalStorage
+
+The built-in `LocalStorage` class provides a simple wrapper around the browser's `localStorage` API:
+
+```typescript /home/daytona/workspace/source/src/helpers/storage.ts:7-22
+export class LocalStorage implements DataStorage {
+  async get(key: string) {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem(key);
+  }
+
+  async set(key: string, value: string) {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(key, value);
+  }
+
+  async remove(key: string) {
+    if (typeof window === "undefined") return;
+    localStorage.removeItem(key);
+  }
+}
+```
+
+<Info>
+  The default implementation includes server-side rendering (SSR) support by checking for the `window` object before accessing `localStorage`.
+</Info>
+
+## What Data is Stored
+
+NEAR Connect uses storage to persist:
+
+1. **Selected wallet**: The ID of the currently connected wallet (`selected-wallet` key)
+2. **Debug wallets**: Custom wallet manifests added for testing (`debug-wallets` key)
+3. **Wallet-specific data**: Individual wallets may store additional data through the storage API
+
+## Providing a Custom Storage Provider
+
+Pass your custom storage implementation to the `NearConnector` constructor:
+
+```typescript
+import { NearConnector, DataStorage } from "@hot-labs/near-connect";
+
+class CustomStorage implements DataStorage {
+  async get(key: string): Promise<string | null> {
+    // Your implementation
+    return null;
+  }
+
+  async set(key: string, value: string): Promise<void> {
+    // Your implementation
+  }
+
+  async remove(key: string): Promise<void> {
+    // Your implementation
+  }
+}
+
+const connector = new NearConnector({
+  storage: new CustomStorage()
+});
+```
+
+## Example: IndexedDB Storage
+
+Here's a production-ready example using IndexedDB for more robust client-side storage:
+
+```typescript
+import { DataStorage } from "@hot-labs/near-connect";
+
+class IndexedDBStorage implements DataStorage {
+  private dbName = "near-connect";
+  private storeName = "storage";
+  private version = 1;
+
+  private async getDb(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      if (typeof window === "undefined" || typeof indexedDB === "undefined") {
+        reject(new Error("IndexedDB is not available"));
+        return;
+      }
+
+      const request = indexedDB.open(this.dbName, this.version);
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+
+      request.onupgradeneeded = (event) => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(this.storeName)) {
+          db.createObjectStore(this.storeName);
+        }
+      };
+    });
+  }
+
+  async get(key: string): Promise<string | null> {
+    const db = await this.getDb();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(this.storeName, "readonly");
+      const store = transaction.objectStore(this.storeName);
+      const request = store.get(key);
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        db.close();
+        resolve(request.result ?? null);
+      };
+    });
+  }
+
+  async set(key: string, value: string): Promise<void> {
+    const db = await this.getDb();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(this.storeName, "readwrite");
+      const store = transaction.objectStore(this.storeName);
+      const request = store.put(value, key);
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        db.close();
+        resolve();
+      };
+    });
+  }
+
+  async remove(key: string): Promise<void> {
+    const db = await this.getDb();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(this.storeName, "readwrite");
+      const store = transaction.objectStore(this.storeName);
+      const request = store.delete(key);
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        db.close();
+        resolve();
+      };
+    });
+  }
+}
+
+// Use it with NearConnector
+const connector = new NearConnector({
+  storage: new IndexedDBStorage()
+});
+```
+
+<Tip>
+  IndexedDB is preferred over localStorage for production applications as it provides more storage space, better performance for large datasets, and isn't blocked by browser privacy modes.
+</Tip>
+
+## Example: Session Storage
+
+For applications where you don't want to persist connections across browser sessions:
+
+```typescript
+import { DataStorage } from "@hot-labs/near-connect";
+
+class SessionStorage implements DataStorage {
+  async get(key: string): Promise<string | null> {
+    if (typeof window === "undefined") return null;
+    return sessionStorage.getItem(key);
+  }
+
+  async set(key: string, value: string): Promise<void> {
+    if (typeof window === "undefined") return;
+    sessionStorage.setItem(key, value);
+  }
+
+  async remove(key: string): Promise<void> {
+    if (typeof window === "undefined") return;
+    sessionStorage.removeItem(key);
+  }
+}
+
+const connector = new NearConnector({
+  storage: new SessionStorage()
+});
+```
+
+## Example: Cookie Storage
+
+For server-side rendering scenarios where you need to share state between server and client:
+
+```typescript
+import { DataStorage } from "@hot-labs/near-connect";
+import Cookies from "js-cookie";
+
+class CookieStorage implements DataStorage {
+  private prefix = "near-connect-";
+  
+  async get(key: string): Promise<string | null> {
+    return Cookies.get(this.prefix + key) ?? null;
+  }
+
+  async set(key: string, value: string): Promise<void> {
+    Cookies.set(this.prefix + key, value, {
+      expires: 365, // 1 year
+      sameSite: 'strict',
+      secure: true
+    });
+  }
+
+  async remove(key: string): Promise<void> {
+    Cookies.remove(this.prefix + key);
+  }
+}
+
+const connector = new NearConnector({
+  storage: new CookieStorage()
+});
+```
+
+<Warning>
+  When using cookies, be mindful of size limitations (typically 4KB per cookie) and ensure you set appropriate security flags (`secure`, `sameSite`).
+</Warning>
+
+## Example: Memory Storage (Testing)
+
+For unit tests or temporary connections:
+
+```typescript
+import { DataStorage } from "@hot-labs/near-connect";
+
+class MemoryStorage implements DataStorage {
+  private store = new Map<string, string>();
+
+  async get(key: string): Promise<string | null> {
+    return this.store.get(key) ?? null;
+  }
+
+  async set(key: string, value: string): Promise<void> {
+    this.store.set(key, value);
+  }
+
+  async remove(key: string): Promise<void> {
+    this.store.delete(key);
+  }
+
+  // Additional helper for testing
+  clear(): void {
+    this.store.clear();
+  }
+}
+
+const connector = new NearConnector({
+  storage: new MemoryStorage()
+});
+```
+
+## Example: Encrypted Storage
+
+For enhanced security, you can encrypt sensitive data:
+
+```typescript
+import { DataStorage } from "@hot-labs/near-connect";
+
+class EncryptedStorage implements DataStorage {
+  private base: DataStorage;
+  private encryptionKey: string;
+
+  constructor(baseStorage: DataStorage, encryptionKey: string) {
+    this.base = baseStorage;
+    this.encryptionKey = encryptionKey;
+  }
+
+  private encrypt(value: string): string {
+    // Use your preferred encryption library
+    // This is a simplified example
+    return btoa(value); // Don't use this in production!
+  }
+
+  private decrypt(value: string): string {
+    return atob(value); // Don't use this in production!
+  }
+
+  async get(key: string): Promise<string | null> {
+    const encrypted = await this.base.get(key);
+    if (encrypted === null) return null;
+    
+    try {
+      return this.decrypt(encrypted);
+    } catch (error) {
+      console.error("Failed to decrypt value for key:", key);
+      return null;
+    }
+  }
+
+  async set(key: string, value: string): Promise<void> {
+    const encrypted = this.encrypt(value);
+    await this.base.set(key, encrypted);
+  }
+
+  async remove(key: string): Promise<void> {
+    await this.base.remove(key);
+  }
+}
+
+// Wrap your base storage with encryption
+const connector = new NearConnector({
+  storage: new EncryptedStorage(
+    new LocalStorage(),
+    "your-encryption-key"
+  )
+});
+```
+
+<Warning>
+  The encryption example above uses `btoa`/`atob` for demonstration only. For production applications, use a proper encryption library like `crypto-js` or the Web Crypto API.
+</Warning>
+
+## Example: Server-Side Storage
+
+For applications that need to persist wallet state on the server:
+
+```typescript
+import { DataStorage } from "@hot-labs/near-connect";
+
+class ServerStorage implements DataStorage {
+  private apiEndpoint: string;
+  private sessionId: string;
+
+  constructor(apiEndpoint: string, sessionId: string) {
+    this.apiEndpoint = apiEndpoint;
+    this.sessionId = sessionId;
+  }
+
+  async get(key: string): Promise<string | null> {
+    const response = await fetch(`${this.apiEndpoint}/storage/${key}`, {
+      headers: {
+        'X-Session-ID': this.sessionId
+      }
+    });
+    
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.value ?? null;
+  }
+
+  async set(key: string, value: string): Promise<void> {
+    await fetch(`${this.apiEndpoint}/storage/${key}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': this.sessionId
+      },
+      body: JSON.stringify({ value })
+    });
+  }
+
+  async remove(key: string): Promise<void> {
+    await fetch(`${this.apiEndpoint}/storage/${key}`, {
+      method: 'DELETE',
+      headers: {
+        'X-Session-ID': this.sessionId
+      }
+    });
+  }
+}
+
+const connector = new NearConnector({
+  storage: new ServerStorage(
+    "https://api.example.com",
+    sessionId
+  )
+});
+```
+
+## Storage Keys Reference
+
+Here are the keys that NEAR Connect uses internally:
+
+| Key | Description | Value Type |
+|-----|-------------|------------|
+| `selected-wallet` | ID of the currently connected wallet | `string` |
+| `debug-wallets` | Array of custom wallet manifests for debugging | `string` (JSON array) |
+
+<Note>
+  Individual wallets may also use the storage API to persist their own data. The keys they use are wallet-specific and documented by each wallet implementation.
+</Note>
+
+## Best Practices
+
+1. **Handle errors gracefully**: Storage operations can fail (quota exceeded, permissions, etc.). Always handle errors appropriately.
+
+2. **SSR compatibility**: If your application uses server-side rendering, ensure your storage implementation handles the absence of browser APIs.
+
+3. **Data validation**: When retrieving data, validate that it's in the expected format before using it.
+
+4. **Clear expired data**: Implement a mechanism to clear old or expired data to prevent storage bloat.
+
+5. **Use appropriate storage**: Choose storage based on your requirements:
+   - `localStorage`: Simple, synchronous, persistent
+   - `sessionStorage`: Cleared on tab close
+   - `IndexedDB`: Large data, better performance
+   - `Cookies`: Server/client sync, size limited
+   - `Memory`: Testing, non-persistent
+
+6. **Security**: Be mindful of what data you store. Avoid storing sensitive information in plain text.
+
+## Accessing Storage in NearConnector
+
+The storage instance is accessible via the `storage` property on the connector:
+
+```typescript /home/daytona/workspace/source/src/NearConnector.ts:68-90
+private storage: DataStorage;
+
+constructor(options?: NearConnectorOptions) {
+  this.storage = options?.storage ?? new LocalStorage();
+  // ...
+}
+```
+
+You can access it directly if needed:
+
+```typescript
+const connector = new NearConnector();
+
+// Direct storage access (not recommended for most use cases)
+await connector['storage'].set('custom-key', 'custom-value');
+const value = await connector['storage'].get('custom-key');
+```
+
+<Warning>
+  Directly accessing the storage is not recommended for application code. Use the connector's public API whenever possible. Direct storage access is primarily useful for debugging and advanced integrations.
+</Warning>
+
+## Migration Between Storage Providers
+
+If you need to migrate data from one storage provider to another:
+
+```typescript
+import { DataStorage, LocalStorage } from "@hot-labs/near-connect";
+
+async function migrateStorage(
+  oldStorage: DataStorage,
+  newStorage: DataStorage,
+  keys: string[]
+) {
+  for (const key of keys) {
+    const value = await oldStorage.get(key);
+    if (value !== null) {
+      await newStorage.set(key, value);
+      await oldStorage.remove(key);
+    }
+  }
+}
+
+// Example migration from localStorage to IndexedDB
+const oldStorage = new LocalStorage();
+const newStorage = new IndexedDBStorage();
+
+await migrateStorage(
+  oldStorage,
+  newStorage,
+  ['selected-wallet', 'debug-wallets']
+);
+
+const connector = new NearConnector({
+  storage: newStorage
+});
+```

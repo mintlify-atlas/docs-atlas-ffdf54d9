@@ -1,0 +1,268 @@
+---
+title: 'SandboxWallet'
+description: 'Sandboxed wallet implementation that executes wallet code in an isolated iframe environment'
+---
+
+## Overview
+
+The `SandboxWallet` class provides a secure way to interact with NEAR wallets by executing wallet code in a sandboxed iframe environment. This isolation ensures that wallet operations are performed safely without direct access to the main application context.
+
+## Constructor
+
+```typescript
+constructor(connector: NearConnector, manifest: WalletManifest)
+```
+
+<ParamField path="connector" type="NearConnector" required>
+  The NEAR connector instance that manages the connection to the NEAR network.
+</ParamField>
+
+<ParamField path="manifest" type="WalletManifest" required>
+  The wallet manifest containing metadata and configuration for the wallet.
+</ParamField>
+
+## Properties
+
+<ResponseField name="executor" type="SandboxExecutor">
+  The sandbox executor instance that handles communication with the iframe and executes wallet methods.
+</ResponseField>
+
+<ResponseField name="connector" type="NearConnector">
+  Reference to the NEAR connector instance.
+</ResponseField>
+
+<ResponseField name="manifest" type="WalletManifest">
+  The wallet manifest configuration.
+</ResponseField>
+
+## Methods
+
+### signIn
+
+Initiate the sign-in process for the wallet.
+
+```typescript
+async signIn(data?: {
+  network?: Network;
+  contractId?: string;
+  methodNames?: Array<string>;
+}): Promise<Array<Account>>
+```
+
+<ParamField path="data.network" type="Network">
+  The NEAR network to connect to ("mainnet" or "testnet"). Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="data.contractId" type="string">
+  Optional contract ID for limited access key permissions.
+</ParamField>
+
+<ParamField path="data.methodNames" type="string[]">
+  Optional array of method names for limited access key permissions.
+</ParamField>
+
+**Returns:** Promise resolving to an array of signed-in accounts.
+
+### signInAndSignMessage
+
+Sign in and simultaneously sign a message in a single operation.
+
+```typescript
+async signInAndSignMessage(
+  data: SignInAndSignMessageParams
+): Promise<Array<AccountWithSignedMessage>>
+```
+
+<ParamField path="data.network" type="Network">
+  The NEAR network to connect to. Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="data.contractId" type="string">
+  Optional contract ID for access key permissions.
+</ParamField>
+
+<ParamField path="data.methodNames" type="string[]">
+  Optional array of method names for access key permissions.
+</ParamField>
+
+<ParamField path="data.messageParams" type="SignMessageDuringSignInParams" required>
+  Parameters for the message to be signed during sign-in.
+</ParamField>
+
+**Returns:** Promise resolving to an array of accounts with signed messages.
+
+### signOut
+
+Sign out from the wallet and clear stored data.
+
+```typescript
+async signOut(data?: { network?: Network }): Promise<void>
+```
+
+<ParamField path="data.network" type="Network">
+  The NEAR network to sign out from. Defaults to the connector's network.
+</ParamField>
+
+<Note>
+This method clears the executor's storage in addition to signing out.
+</Note>
+
+### getAccounts
+
+Retrieve the currently signed-in accounts.
+
+```typescript
+async getAccounts(data?: { network?: Network }): Promise<Array<Account>>
+```
+
+<ParamField path="data.network" type="Network">
+  The NEAR network to query. Defaults to the connector's network.
+</ParamField>
+
+**Returns:** Promise resolving to an array of signed-in accounts.
+
+### signAndSendTransaction
+
+Sign and send a transaction with one or more actions.
+
+```typescript
+async signAndSendTransaction(
+  params: SignAndSendTransactionParams
+): Promise<FinalExecutionOutcome>
+```
+
+<ParamField path="params.receiverId" type="string" required>
+  The account ID that will receive the transaction.
+</ParamField>
+
+<ParamField path="params.actions" type="Array<Action>" required>
+  Array of NEAR actions to include in the transaction.
+</ParamField>
+
+<ParamField path="params.network" type="Network">
+  The NEAR network for the transaction. Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="params.signerId" type="string">
+  Optional account ID of the transaction signer.
+</ParamField>
+
+**Returns:** Promise resolving to the final execution outcome of the transaction.
+
+### signAndSendTransactions
+
+Sign and send multiple transactions in a batch.
+
+```typescript
+async signAndSendTransactions(
+  params: SignAndSendTransactionsParams
+): Promise<Array<FinalExecutionOutcome>>
+```
+
+<ParamField path="params.transactions" type="Array<Transaction>" required>
+  Array of transactions, each containing a receiverId and actions.
+</ParamField>
+
+<ParamField path="params.network" type="Network">
+  The NEAR network for the transactions. Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="params.signerId" type="string">
+  Optional account ID of the transaction signer.
+</ParamField>
+
+**Returns:** Promise resolving to an array of final execution outcomes.
+
+### signMessage
+
+Sign a message for authentication or verification purposes.
+
+```typescript
+async signMessage(params: SignMessageParams): Promise<SignedMessage>
+```
+
+<ParamField path="params.message" type="string" required>
+  The message to be signed.
+</ParamField>
+
+<ParamField path="params.recipient" type="string" required>
+  The intended recipient of the signed message.
+</ParamField>
+
+<ParamField path="params.nonce" type="Uint8Array" required>
+  A unique nonce to prevent replay attacks.
+</ParamField>
+
+<ParamField path="params.network" type="Network">
+  The NEAR network. Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="params.signerId" type="string">
+  Optional account ID of the message signer.
+</ParamField>
+
+**Returns:** Promise resolving to the signed message with signature.
+
+### signDelegateActions
+
+Sign delegate actions for meta-transactions.
+
+```typescript
+async signDelegateActions(
+  params: SignDelegateActionsParams
+): Promise<SignDelegateActionsResponse>
+```
+
+<ParamField path="params.delegateActions" type="Array<DelegateAction>" required>
+  Array of delegate actions, each containing a receiverId and actions.
+</ParamField>
+
+<ParamField path="params.network" type="Network">
+  The NEAR network. Defaults to the connector's network.
+</ParamField>
+
+<ParamField path="params.signerId" type="string">
+  Optional account ID of the signer.
+</ParamField>
+
+**Returns:** Promise resolving to signed delegate actions.
+
+## Usage Example
+
+```typescript
+import { SandboxWallet } from 'near-connect';
+
+// Create a sandbox wallet instance
+const wallet = new SandboxWallet(connector, walletManifest);
+
+// Sign in
+const accounts = await wallet.signIn({
+  network: 'testnet'
+});
+
+// Send a transaction
+const outcome = await wallet.signAndSendTransaction({
+  receiverId: 'example.testnet',
+  actions: [
+    {
+      type: 'FunctionCall',
+      params: {
+        methodName: 'myMethod',
+        args: {},
+        gas: '30000000000000',
+        deposit: '0'
+      }
+    }
+  ]
+});
+```
+
+## Security
+
+The `SandboxWallet` executes wallet code in an isolated iframe environment, providing an additional layer of security by:
+
+- Preventing direct access to the main application's DOM and JavaScript context
+- Isolating wallet permissions and capabilities
+- Controlling communication through a message-passing interface
+
+This approach is particularly useful for integrating third-party wallets while maintaining security boundaries.

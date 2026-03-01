@@ -1,0 +1,279 @@
+---
+title: "Transfer Actions"
+description: "Transfer NEAR tokens and manage accounts on the NEAR blockchain"
+---
+
+## TransferAction
+
+The `TransferAction` is used to transfer NEAR tokens from one account to another.
+
+### Type Definition
+
+```typescript
+interface TransferAction {
+  type: "Transfer";
+  params: {
+    deposit: string;
+  };
+}
+```
+
+### Parameters
+
+<ParamField path="type" type="'Transfer'" required>
+  The action type identifier. Must be `"Transfer"`.
+</ParamField>
+
+<ParamField path="params" type="object" required>
+  The parameters for the transfer.
+
+  <Expandable title="params properties">
+    <ParamField path="params.deposit" type="string" required>
+      The amount of NEAR tokens to transfer, specified as a string in yoctoNEAR units (1 NEAR = 10^24 yoctoNEAR).
+      
+      Examples:
+      - `"1000000000000000000000000"` = 1 NEAR
+      - `"100000000000000000000000"` = 0.1 NEAR
+      - `"1000000000000000000000"` = 0.001 NEAR
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Example
+
+```typescript
+import { signAndSendTransaction } from "@near-connect/core";
+
+// Transfer 1 NEAR to alice.near
+const result = await signAndSendTransaction({
+  receiverId: "alice.near",
+  actions: [
+    {
+      type: "Transfer",
+      params: {
+        deposit: "1000000000000000000000000", // 1 NEAR
+      },
+    },
+  ],
+});
+```
+
+### Conversion from NEAR JS SDK
+
+```typescript
+import { transfer } from "@near-js/transactions";
+import { nearActionsToConnectorActions } from "@near-connect/core";
+
+const nearAction = transfer(BigInt(1000000000000000000000000));
+
+const connectorActions = nearActionsToConnectorActions([nearAction]);
+// [
+//   {
+//     type: "Transfer",
+//     params: { deposit: "1000000000000000000000000" }
+//   }
+// ]
+```
+
+---
+
+## StakeAction
+
+The `StakeAction` is used to stake NEAR tokens for validation.
+
+### Type Definition
+
+```typescript
+interface StakeAction {
+  type: "Stake";
+  params: {
+    stake: string;
+    publicKey: string;
+  };
+}
+```
+
+### Parameters
+
+<ParamField path="type" type="'Stake'" required>
+  The action type identifier. Must be `"Stake"`.
+</ParamField>
+
+<ParamField path="params" type="object" required>
+  The parameters for staking.
+
+  <Expandable title="params properties">
+    <ParamField path="params.stake" type="string" required>
+      The amount of NEAR tokens to stake, specified as a string in yoctoNEAR units.
+    </ParamField>
+
+    <ParamField path="params.publicKey" type="string" required>
+      The public key to use for validation, in base58 format.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Example
+
+```typescript
+const action: StakeAction = {
+  type: "Stake",
+  params: {
+    stake: "100000000000000000000000000", // 100 NEAR
+    publicKey: "ed25519:5FwoV3MFB94ExfgycBvUQaTbTfgSMPAcfX62bgLBqEPR",
+  },
+};
+```
+
+---
+
+## CreateAccountAction
+
+The `CreateAccountAction` is used to create a new NEAR account.
+
+### Type Definition
+
+```typescript
+interface CreateAccountAction {
+  type: "CreateAccount";
+}
+```
+
+### Parameters
+
+<ParamField path="type" type="'CreateAccount'" required>
+  The action type identifier. Must be `"CreateAccount"`.
+</ParamField>
+
+<Info>
+  The `CreateAccountAction` has no additional parameters. The account ID is specified in the `receiverId` field of the transaction.
+</Info>
+
+### Example
+
+```typescript
+import { signAndSendTransaction } from "@near-connect/core";
+
+// Create a new account and add an initial transfer
+const result = await signAndSendTransaction({
+  receiverId: "newaccount.alice.near",
+  actions: [
+    {
+      type: "CreateAccount",
+    },
+    {
+      type: "Transfer",
+      params: {
+        deposit: "1000000000000000000000000", // 1 NEAR initial balance
+      },
+    },
+  ],
+});
+```
+
+---
+
+## DeleteAccountAction
+
+The `DeleteAccountAction` is used to delete an account and transfer its remaining balance to a beneficiary.
+
+### Type Definition
+
+```typescript
+interface DeleteAccountAction {
+  type: "DeleteAccount";
+  params: {
+    beneficiaryId: string;
+  };
+}
+```
+
+### Parameters
+
+<ParamField path="type" type="'DeleteAccount'" required>
+  The action type identifier. Must be `"DeleteAccount"`.
+</ParamField>
+
+<ParamField path="params" type="object" required>
+  The parameters for account deletion.
+
+  <Expandable title="params properties">
+    <ParamField path="params.beneficiaryId" type="string" required>
+      The account ID that will receive the remaining balance of the deleted account.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Example
+
+```typescript
+const action: DeleteAccountAction = {
+  type: "DeleteAccount",
+  params: {
+    beneficiaryId: "alice.near",
+  },
+};
+```
+
+<Warning>
+  Account deletion is irreversible. Ensure all important data is backed up and the correct beneficiary is specified.
+</Warning>
+
+---
+
+## Best Practices
+
+### Combining Actions
+
+Multiple actions can be combined in a single transaction:
+
+```typescript
+import { signAndSendTransaction } from "@near-connect/core";
+
+// Create account, transfer initial balance, and add access key
+const result = await signAndSendTransaction({
+  receiverId: "newuser.alice.near",
+  actions: [
+    { type: "CreateAccount" },
+    {
+      type: "Transfer",
+      params: { deposit: "5000000000000000000000000" }, // 5 NEAR
+    },
+    {
+      type: "AddKey",
+      params: {
+        publicKey: "ed25519:...",
+        accessKey: {
+          permission: "FullAccess",
+        },
+      },
+    },
+  ],
+});
+```
+
+### Amount Formatting
+
+Use helper functions to convert human-readable amounts:
+
+```typescript
+import { parseNearAmount } from "near-api-js/lib/utils/format";
+
+const action: TransferAction = {
+  type: "Transfer",
+  params: {
+    deposit: parseNearAmount("1.5")!, // 1.5 NEAR
+  },
+};
+```
+
+## Related Actions
+
+<CardGroup cols={2}>
+  <Card title="Function Call" href="/api/actions/function-call">
+    Call smart contract methods with optional deposits
+  </Card>
+  <Card title="Key Management" href="/api/actions/key-management">
+    Manage access keys for accounts
+  </Card>
+</CardGroup>

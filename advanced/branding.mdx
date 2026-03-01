@@ -1,0 +1,307 @@
+---
+title: Customizing Footer Branding
+description: Customize or hide the footer branding in the wallet selector modal
+---
+
+## Overview
+
+The wallet selector modal in NEAR Connect includes a footer section that displays branding information. By default, it shows "NEAR Connector" branding with a link to create a NEAR wallet. You can customize this footer to match your application's branding or hide it completely.
+
+## Default Footer
+
+When you create a `NearConnector` without specifying footer branding, it uses the default NEAR Connector branding:
+
+```typescript /home/daytona/workspace/source/src/NearConnector.ts:106-115
+if (options?.footerBranding !== undefined) {
+  this.footerBranding = options?.footerBranding;
+} else {
+  this.footerBranding = {
+    icon: "https://pages.near.org/wp-content/uploads/2023/11/NEAR_token.png",
+    heading: "NEAR Connector",
+    link: "https://wallet.near.org",
+    linkText: "Don't have a wallet?",
+  };
+}
+```
+
+This creates a footer that looks like:
+
+<Frame>
+  <img src="/images/default-footer-example.png" alt="Default footer with NEAR Connector branding" style={{ borderRadius: '0.5rem' }} />
+</Frame>
+
+## Footer Branding Interface
+
+The footer branding is configured using the `FooterBranding` interface:
+
+```typescript /home/daytona/workspace/source/src/types/index.ts:205-210
+export interface FooterBranding {
+  icon?: string;
+  heading: string;
+  link: string;
+  linkText: string;
+}
+```
+
+### Properties
+
+- **`icon`** (optional): URL to an image to display in the footer. Common formats: PNG, SVG, WebP
+- **`heading`**: Main text to display in the footer (e.g., your app name or a call to action)
+- **`link`**: URL to navigate to when the user clicks the footer link
+- **`linkText`**: Text for the clickable link
+
+## Customizing the Footer
+
+Provide a custom `footerBranding` object to the `NearConnector` constructor:
+
+```typescript
+import { NearConnector } from "@hot-labs/near-connect";
+
+const connector = new NearConnector({
+  footerBranding: {
+    icon: "https://example.com/logo.png",
+    heading: "MyApp Wallet",
+    link: "https://example.com/help/wallet",
+    linkText: "Learn about wallets"
+  }
+});
+```
+
+## Hiding the Footer
+
+To completely hide the footer, pass `null` as the `footerBranding` value:
+
+```typescript
+import { NearConnector } from "@hot-labs/near-connect";
+
+const connector = new NearConnector({
+  footerBranding: null
+});
+```
+
+<Note>
+  Setting `footerBranding: null` provides a cleaner, more minimal modal interface that's useful when you want to keep the focus entirely on wallet selection.
+</Note>
+
+## Configuration in NearConnectorOptions
+
+The footer branding is configured via the `NearConnectorOptions` interface:
+
+```typescript /home/daytona/workspace/source/src/NearConnector.ts:38-41
+/**
+ * Footer branding for the wallet selector popup. If not provided, default branding will be used. If provided null, footer will be hidden.
+ */
+footerBranding?: FooterBranding | null;
+```
+
+## Footer Implementation
+
+The footer is rendered in the wallet selector popup:
+
+```typescript /home/daytona/workspace/source/src/popups/NearWalletsPopup.ts:110-120
+get footer() {
+  if (!this.delegate.footer) return "";
+  const { icon, heading, link, linkText } = this.delegate.footer;
+  return html`
+    <div class="footer">
+      ${icon ? html`<img src="${icon}" alt="${heading}" />` : ""}
+      <p>${heading}</p>
+      <a class="get-wallet-link" href="${link}" target="_blank">${linkText}</a>
+    </div>
+  `;
+}
+```
+
+## Common Use Cases
+
+### Brand Your Application
+
+Customize the footer to promote your application:
+
+```typescript
+const connector = new NearConnector({
+  footerBranding: {
+    icon: "https://myapp.com/brand-icon.svg",
+    heading: "Powered by MyApp",
+    link: "https://myapp.com",
+    linkText: "Learn more about MyApp"
+  }
+});
+```
+
+### Guide Users to Help Documentation
+
+Direct users to wallet setup documentation:
+
+```typescript
+const connector = new NearConnector({
+  footerBranding: {
+    icon: "https://docs.myapp.com/wallet-icon.png",
+    heading: "Need Help?",
+    link: "https://docs.myapp.com/getting-started/wallet-setup",
+    linkText: "View wallet setup guide"
+  }
+});
+```
+
+### Promote Wallet Creation
+
+Encourage users without a wallet to create one:
+
+```typescript
+const connector = new NearConnector({
+  footerBranding: {
+    icon: "https://pages.near.org/wp-content/uploads/2023/11/NEAR_token.png",
+    heading: "New to NEAR?",
+    link: "https://wallet.near.org/create",
+    linkText: "Create your first wallet"
+  }
+});
+```
+
+### Minimal Interface
+
+Remove branding entirely for a clean, focused interface:
+
+```typescript
+const connector = new NearConnector({
+  footerBranding: null
+});
+```
+
+### Footer Without Icon
+
+You can omit the icon for a text-only footer:
+
+```typescript
+const connector = new NearConnector({
+  footerBranding: {
+    // No icon property
+    heading: "NEAR Protocol",
+    link: "https://near.org",
+    linkText: "Learn more about NEAR"
+  }
+});
+```
+
+## External Link Behavior
+
+The footer link opens in a new tab (using `target="_blank"`), ensuring users don't lose their place in your application:
+
+```html
+<a class="get-wallet-link" href="${link}" target="_blank">${linkText}</a>
+```
+
+<Tip>
+  When choosing a footer link, consider what would be most helpful for your users at the point of wallet selection. Common options include wallet setup guides, help documentation, or information about NEAR Protocol.
+</Tip>
+
+## Footer in Different Modal States
+
+The footer appears in both the main wallet selection view and the settings/debug view:
+
+```typescript /home/daytona/workspace/source/src/popups/NearWalletsPopup.ts:136-149
+<div class="modal-body">
+  <p style="text-align: left;">
+    You can add your wallet to dapp for debug,
+    <a href="https://github.com/azbang/hot-connector" target="_blank">read the documentation.</a> Paste your manifest and click "Add".
+  </p>
+
+  <textarea style="width: 100%;" id="debug-manifest-input" rows="10">${JSON.stringify(debugManifest, null, 2)}</textarea>
+  <button class="add-debug-manifest-button">Add</button>
+</div>
+
+${this.footer}
+```
+
+## Styling Considerations
+
+<Note>
+  The footer uses predefined CSS classes (`.footer`, `.get-wallet-link`) that are styled by the NEAR Connect library. Custom styling of these elements is not currently supported through the public API.
+</Note>
+
+If you need complete control over the modal appearance, consider:
+
+1. Using `footerBranding: null` to hide the default footer
+2. Building your own wallet selection UI using the connector's API methods
+
+## Dynamic Footer Updates
+
+The footer branding is set during connector initialization and cannot be changed dynamically after creation. If you need to update the footer:
+
+```typescript
+// Not supported - branding cannot be changed after initialization
+// connector.footerBranding = newBranding; // This won't work
+
+// Instead, create a new connector instance
+const newConnector = new NearConnector({
+  footerBranding: newBranding
+});
+```
+
+<Warning>
+  Creating a new connector instance will reset the connection state, so this approach is only suitable during application initialization, not during active user sessions.
+</Warning>
+
+## Best Practices
+
+1. **Keep it concise**: The footer space is limited, so keep your heading and link text short and clear.
+
+2. **Use relevant links**: Link to resources that help users understand or set up wallets, not generic marketing pages.
+
+3. **Optimize images**: Use SVG format for icons when possible for crisp rendering at any size. Keep image files small for faster loading.
+
+4. **Consider branding consistency**: Match the footer styling to your application's overall design language through the heading and link text.
+
+5. **Test without footer**: Try both with custom branding and with `null` to see which provides a better user experience for your application.
+
+6. **Accessibility**: Ensure your `heading` and `linkText` are descriptive enough for screen readers.
+
+## Example Configurations
+
+### Enterprise Application
+
+```typescript
+const connector = new NearConnector({
+  footerBranding: {
+    icon: "https://enterprise.example.com/assets/logo.svg",
+    heading: "Enterprise NEAR Portal",
+    link: "https://enterprise.example.com/docs/wallet-guide",
+    linkText: "Wallet setup for enterprise users"
+  }
+});
+```
+
+### Gaming Platform
+
+```typescript
+const connector = new NearConnector({
+  footerBranding: {
+    icon: "https://game.example.com/assets/coin-icon.png",
+    heading: "GameVerse Wallet",
+    link: "https://game.example.com/rewards",
+    linkText: "Earn rewards with your wallet"
+  }
+});
+```
+
+### DeFi Application
+
+```typescript
+const connector = new NearConnector({
+  footerBranding: {
+    icon: "https://defi.example.com/brand/logo.svg",
+    heading: "Secure DeFi Trading",
+    link: "https://defi.example.com/security",
+    linkText: "Learn about wallet security"
+  }
+});
+```
+
+### Minimal dApp
+
+```typescript
+const connector = new NearConnector({
+  footerBranding: null  // Clean, minimal interface
+});
+```

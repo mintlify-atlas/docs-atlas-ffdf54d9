@@ -1,0 +1,392 @@
+---
+title: "Key Management Actions"
+description: "Add and remove access keys for NEAR accounts"
+---
+
+## Overview
+
+Access keys control permissions for NEAR accounts. NEAR Connect provides actions to add and delete access keys with different permission levels.
+
+## AddKeyAction
+
+The `AddKeyAction` is used to add a new access key to an account with either full access or function call permissions.
+
+### Type Definition
+
+```typescript
+interface AddKeyAction {
+  type: "AddKey";
+  params: {
+    publicKey: string;
+    accessKey: {
+      nonce?: number;
+      permission:
+        | "FullAccess"
+        | {
+            receiverId: string;
+            allowance?: string;
+            methodNames?: Array<string>;
+          };
+    };
+  };
+}
+```
+
+### Parameters
+
+<ParamField path="type" type="'AddKey'" required>
+  The action type identifier. Must be `"AddKey"`.
+</ParamField>
+
+<ParamField path="params" type="object" required>
+  The parameters for adding an access key.
+
+  <Expandable title="params properties">
+    <ParamField path="params.publicKey" type="string" required>
+      The public key to add, in base58 format with algorithm prefix (e.g., `"ed25519:..."`)
+    </ParamField>
+
+    <ParamField path="params.accessKey" type="object" required>
+      The access key configuration.
+
+      <Expandable title="accessKey properties">
+        <ParamField path="params.accessKey.nonce" type="number">
+          Optional nonce value for the access key. If not specified, defaults to 0.
+        </ParamField>
+
+        <ParamField path="params.accessKey.permission" type="'FullAccess' | object" required>
+          The permission level for the access key.
+          
+          **FullAccess**: Grants complete control over the account, including ability to:
+          - Send transactions
+          - Deploy contracts
+          - Manage keys
+          - Delete the account
+          
+          **Function Call Permission Object**: Restricts the key to calling specific methods on a specific contract.
+
+          <Expandable title="Function call permission properties">
+            <ParamField path="params.accessKey.permission.receiverId" type="string" required>
+              The contract account ID that this key is allowed to call methods on.
+            </ParamField>
+
+            <ParamField path="params.accessKey.permission.allowance" type="string">
+              Optional maximum amount of NEAR (in yoctoNEAR) that can be spent on gas by this key. If not specified, no allowance limit is set.
+            </ParamField>
+
+            <ParamField path="params.accessKey.permission.methodNames" type="string[]">
+              Optional array of method names that this key is allowed to call. If empty or not specified, any method can be called.
+            </ParamField>
+          </Expandable>
+        </ParamField>
+      </Expandable>
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Examples
+
+#### Add Full Access Key
+
+Grant complete control over the account:
+
+```typescript
+const action: AddKeyAction = {
+  type: "AddKey",
+  params: {
+    publicKey: "ed25519:5FwoV3MFB94ExfgycBvUQaTbTfgSMPAcfX62bgLBqEPR",
+    accessKey: {
+      permission: "FullAccess",
+    },
+  },
+};
+```
+
+#### Add Function Call Key
+
+Create a limited access key for calling specific contract methods:
+
+```typescript
+const action: AddKeyAction = {
+  type: "AddKey",
+  params: {
+    publicKey: "ed25519:5FwoV3MFB94ExfgycBvUQaTbTfgSMPAcfX62bgLBqEPR",
+    accessKey: {
+      permission: {
+        receiverId: "contract.near",
+        allowance: "250000000000000000000000", // 0.25 NEAR allowance
+        methodNames: ["submit_vote", "get_results"],
+      },
+    },
+  },
+};
+```
+
+#### Add Function Call Key with No Method Restrictions
+
+Allow any method on a specific contract:
+
+```typescript
+const action: AddKeyAction = {
+  type: "AddKey",
+  params: {
+    publicKey: "ed25519:5FwoV3MFB94ExfgycBvUQaTbTfgSMPAcfX62bgLBqEPR",
+    accessKey: {
+      permission: {
+        receiverId: "contract.near",
+        // No methodNames specified = all methods allowed
+      },
+    },
+  },
+};
+```
+
+#### Using with signAndSendTransaction
+
+```typescript
+import { signAndSendTransaction } from "@near-connect/core";
+
+const result = await signAndSendTransaction({
+  receiverId: "alice.near",
+  actions: [
+    {
+      type: "AddKey",
+      params: {
+        publicKey: "ed25519:5FwoV3MFB94ExfgycBvUQaTbTfgSMPAcfX62bgLBqEPR",
+        accessKey: {
+          permission: {
+            receiverId: "voting.near",
+            methodNames: ["vote"],
+          },
+        },
+      },
+    },
+  ],
+});
+```
+
+---
+
+## DeleteKeyAction
+
+The `DeleteKeyAction` is used to remove an access key from an account.
+
+### Type Definition
+
+```typescript
+interface DeleteKeyAction {
+  type: "DeleteKey";
+  params: {
+    publicKey: string;
+  };
+}
+```
+
+### Parameters
+
+<ParamField path="type" type="'DeleteKey'" required>
+  The action type identifier. Must be `"DeleteKey"`.
+</ParamField>
+
+<ParamField path="params" type="object" required>
+  The parameters for deleting an access key.
+
+  <Expandable title="params properties">
+    <ParamField path="params.publicKey" type="string" required>
+      The public key to remove, in base58 format with algorithm prefix (e.g., `"ed25519:..."`)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Example
+
+```typescript
+const action: DeleteKeyAction = {
+  type: "DeleteKey",
+  params: {
+    publicKey: "ed25519:5FwoV3MFB94ExfgycBvUQaTbTfgSMPAcfX62bgLBqEPR",
+  },
+};
+```
+
+### Using with signAndSendTransaction
+
+```typescript
+import { signAndSendTransaction } from "@near-connect/core";
+
+const result = await signAndSendTransaction({
+  receiverId: "alice.near",
+  actions: [
+    {
+      type: "DeleteKey",
+      params: {
+        publicKey: "ed25519:5FwoV3MFB94ExfgycBvUQaTbTfgSMPAcfX62bgLBqEPR",
+      },
+    },
+  ],
+});
+```
+
+<Warning>
+  Be careful when deleting access keys. Deleting all full access keys will permanently lock you out of the account.
+</Warning>
+
+---
+
+## Conversion from NEAR JS SDK
+
+When using `nearActionsToConnectorActions`, NEAR JS SDK key actions are automatically converted:
+
+### AddKey Conversion
+
+```typescript
+import { addKey } from "@near-js/transactions";
+import { PublicKey } from "@near-js/crypto";
+import { nearActionsToConnectorActions } from "@near-connect/core";
+
+const publicKey = PublicKey.fromString(
+  "ed25519:5FwoV3MFB94ExfgycBvUQaTbTfgSMPAcfX62bgLBqEPR"
+);
+
+const nearAction = addKey(publicKey, {
+  nonce: 0,
+  permission: {
+    functionCall: {
+      receiverId: "contract.near",
+      allowance: BigInt(250000000000000000000000),
+      methodNames: ["vote"],
+    },
+  },
+});
+
+const connectorActions = nearActionsToConnectorActions([nearAction]);
+// [
+//   {
+//     type: "AddKey",
+//     params: {
+//       publicKey: "ed25519:5FwoV3MFB94ExfgycBvUQaTbTfgSMPAcfX62bgLBqEPR",
+//       accessKey: {
+//         nonce: 0,
+//         permission: {
+//           receiverId: "contract.near",
+//           allowance: "250000000000000000000000",
+//           methodNames: ["vote"]
+//         }
+//       }
+//     }
+//   }
+// ]
+```
+
+### DeleteKey Conversion
+
+```typescript
+import { deleteKey } from "@near-js/transactions";
+import { PublicKey } from "@near-js/crypto";
+import { nearActionsToConnectorActions } from "@near-connect/core";
+
+const publicKey = PublicKey.fromString(
+  "ed25519:5FwoV3MFB94ExfgycBvUQaTbTfgSMPAcfX62bgLBqEPR"
+);
+
+const nearAction = deleteKey(publicKey);
+
+const connectorActions = nearActionsToConnectorActions([nearAction]);
+// [
+//   {
+//     type: "DeleteKey",
+//     params: {
+//       publicKey: "ed25519:5FwoV3MFB94ExfgycBvUQaTbTfgSMPAcfX62bgLBqEPR"
+//     }
+//   }
+// ]
+```
+
+---
+
+## Best Practices
+
+### Security Considerations
+
+<Tip>
+  Use function call keys instead of full access keys whenever possible to minimize security risks.
+</Tip>
+
+- **Full Access Keys**: Only use for account owner devices or highly trusted applications
+- **Function Call Keys**: Ideal for dApps, limiting the key to specific contract interactions
+- **Allowance Limits**: Set reasonable allowances for function call keys to limit potential losses
+- **Method Restrictions**: Restrict keys to specific methods when possible
+
+### Key Rotation
+
+Regularly rotate access keys for better security:
+
+```typescript
+import { signAndSendTransaction } from "@near-connect/core";
+
+// Rotate a function call key
+const result = await signAndSendTransaction({
+  receiverId: "alice.near",
+  actions: [
+    {
+      type: "DeleteKey",
+      params: {
+        publicKey: "ed25519:OLD_PUBLIC_KEY",
+      },
+    },
+    {
+      type: "AddKey",
+      params: {
+        publicKey: "ed25519:NEW_PUBLIC_KEY",
+        accessKey: {
+          permission: {
+            receiverId: "contract.near",
+            methodNames: ["submit_action"],
+          },
+        },
+      },
+    },
+  ],
+});
+```
+
+### Multi-Device Setup
+
+Add function call keys for different devices:
+
+```typescript
+const mobileKey: AddKeyAction = {
+  type: "AddKey",
+  params: {
+    publicKey: "ed25519:MOBILE_PUBLIC_KEY",
+    accessKey: {
+      permission: {
+        receiverId: "app.near",
+        allowance: "100000000000000000000000", // 0.1 NEAR
+        methodNames: ["quick_action"],
+      },
+    },
+  },
+};
+
+const desktopKey: AddKeyAction = {
+  type: "AddKey",
+  params: {
+    publicKey: "ed25519:DESKTOP_PUBLIC_KEY",
+    accessKey: {
+      permission: "FullAccess",
+    },
+  },
+};
+```
+
+## Related Actions
+
+<CardGroup cols={2}>
+  <Card title="Create Account" href="/api/actions/transfer">
+    Create new accounts that need initial access keys
+  </Card>
+  <Card title="Delete Account" href="/api/actions/transfer">
+    Delete accounts after removing all keys
+  </Card>
+</CardGroup>

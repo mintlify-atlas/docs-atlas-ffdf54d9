@@ -1,0 +1,668 @@
+---
+title: "Sandbox API Reference"
+description: "Complete reference for the window.selector API available to wallet executor scripts running in the sandbox iframe"
+---
+
+Wallet executor scripts running in the sandboxed iframe have access to a restricted API through `window.selector`. This page documents all available APIs and their usage.
+
+## Core APIs
+
+### Storage API
+
+Persist data across sessions using localStorage. Storage is isolated per wallet ID.
+
+<CodeGroup>
+```javascript Set Item
+// Save data
+await window.selector.storage.set('accountId', 'alice.near');
+await window.selector.storage.set('session', JSON.stringify({ token: 'abc123' }));
+```
+
+```javascript Get Item
+// Retrieve data
+const accountId = await window.selector.storage.get('accountId');
+const session = JSON.parse(await window.selector.storage.get('session') || '{}');
+```
+
+```javascript Remove Item
+// Delete data
+await window.selector.storage.remove('accountId');
+```
+
+```javascript List Keys
+// Get all storage keys for this wallet
+const keys = await window.selector.storage.keys();
+console.log(keys); // ['accountId', 'session', ...]
+```
+</CodeGroup>
+
+<ParamField path="storage.set" type="function">
+  **Signature:** `storage.set(key: string, value: string): Promise<void>`
+  
+  Store a key-value pair. Value must be a string (use `JSON.stringify()` for objects).
+  
+  <Accordion title="Example: Storing Accounts">
+    ```javascript
+    const accounts = [
+      { accountId: 'alice.near', publicKey: 'ed25519:...' },
+      { accountId: 'bob.near', publicKey: 'ed25519:...' }
+    ];
+    
+    await window.selector.storage.set(
+      'accounts:mainnet',
+      JSON.stringify(accounts)
+    );
+    ```
+  </Accordion>
+</ParamField>
+
+<ParamField path="storage.get" type="function">
+  **Signature:** `storage.get(key: string): Promise<string | null>`
+  
+  Retrieve a value by key. Returns `null` if key doesn't exist.
+  
+  <Accordion title="Example: Loading Accounts">
+    ```javascript
+    const stored = await window.selector.storage.get('accounts:mainnet');
+    const accounts = stored ? JSON.parse(stored) : [];
+    ```
+  </Accordion>
+</ParamField>
+
+<ParamField path="storage.remove" type="function">
+  **Signature:** `storage.remove(key: string): Promise<void>`
+  
+  Delete a key-value pair from storage.
+</ParamField>
+
+<ParamField path="storage.keys" type="function">
+  **Signature:** `storage.keys(): Promise<string[]>`
+  
+  Get all storage keys for this wallet.
+</ParamField>
+
+### UI Control API
+
+Control the visibility of the sandbox iframe overlay.
+
+```javascript
+// Show iframe overlay (makes iframe visible)
+window.selector.ui.showIframe();
+
+// Render your UI
+document.body.innerHTML = `
+  <div class="wallet-modal">
+    <h2>Sign Transaction</h2>
+    <button onclick="approve()">Approve</button>
+    <button onclick="reject()">Reject</button>
+  </div>
+`;
+
+// Hide iframe when done
+window.selector.ui.hideIframe();
+```
+
+<ParamField path="ui.showIframe" type="function">
+  **Signature:** `ui.showIframe(): void`
+  
+  Make the iframe visible to show wallet UI directly in the frame.
+  
+  <Note>
+    Most wallets open a popup/new window instead of showing UI in the iframe. Only use this if you need to render UI directly in the dApp context.
+  </Note>
+</ParamField>
+
+<ParamField path="ui.hideIframe" type="function">
+  **Signature:** `ui.hideIframe(): void`
+  
+  Hide the iframe overlay.
+</ParamField>
+
+### Window Management API
+
+Open popups and communicate with them. Requires `allowsOpen` permission.
+
+<CodeGroup>
+```javascript Open Popup
+// Open wallet UI in popup
+const windowId = await window.selector.open(
+  'https://wallet.example.com/sign?data=...',
+  'width=400,height=600'
+);
+
+console.log('Opened window:', windowId);
+```
+
+```javascript Post Message to Popup
+// Send data to opened window
+await window.selector.panel.postMessage(windowId, {
+  type: 'request',
+  data: { transaction: {...} }
+});
+```
+
+```javascript Focus Popup
+// Bring window to front
+await window.selector.panel.focus(windowId);
+```
+
+```javascript Close Popup
+// Close the window
+await window.selector.panel.close(windowId);
+```
+
+```javascript Listen for Close
+// Detect when user closes window
+window.addEventListener('message', (event) => {
+  if (event.data.method === 'proxy-window:closed') {
+    console.log('Window closed:', event.data.windowId);
+  }
+});
+```
+</CodeGroup>
+
+<ParamField path="open" type="function">
+  **Signature:** `open(url: string, features?: string): Promise<string | null>`
+  
+  Open a URL in a popup window. Returns window ID for later reference.
+  
+  <ResponseField name="url" type="string" required>
+    URL to open. Must match a pattern in manifest's `permissions.allowsOpen`.
+  </ResponseField>
+  
+  <ResponseField name="features" type="string">
+    Window features (e.g., `'width=400,height=600'`)
+  </ResponseField>
+  
+  <ResponseField name="returns" type="string | null">
+    Window ID for communicating with the popup, or `null` if blocked.
+  </ResponseField>
+  
+  <Accordion title="Permission Check">
+    The URL must match an entry in your manifest's `allowsOpen` list:
+    
+    ```json manifest.json
+    {
+      "permissions": {
+        "allowsOpen": [
+          "https://wallet.example.com",
+          "walletapp://"
+        ]
+      }
+    }
+    ```
+    
+    Matching rules:
+    - Protocol must match exactly
+    - If manifest entry includes hostname, it must match
+    - If manifest entry includes path, it must match
+  </Accordion>
+</ParamField>
+
+<ParamField path="panel.postMessage" type="function">
+  **Signature:** `panel.postMessage(windowId: string, data: any): Promise<void>`
+  
+  Send a message to an opened window.
+</ParamField>
+
+<ParamField path="panel.focus" type="function">
+  **Signature:** `panel.focus(windowId: string): Promise<void>`
+  
+  Bring an opened window to the front.
+</ParamField>
+
+<ParamField path="panel.close" type="function">
+  **Signature:** `panel.close(windowId: string): Promise<void>`
+  
+  Close an opened window programmatically.
+</ParamField>
+
+### External API Access
+
+Call methods on external JavaScript objects. Requires `external` permission.
+
+```javascript
+// Access external wallet object injected by browser extension
+const result = await window.selector.external(
+  'okxwallet.near',           // Object path
+  'signAndSendTransaction',    // Method name
+  [params]                     // Arguments
+);
+```
+
+<ParamField path="external" type="function">
+  **Signature:** `external(entity: string, method: string, args: any[]): Promise<any>`
+  
+  Call a method on an external object (e.g., browser extension wallet).
+  
+  <ResponseField name="entity" type="string" required>
+    Dot-separated path to object (e.g., `'okxwallet.near'`).
+    
+    Must be listed in manifest's `permissions.external`.
+  </ResponseField>
+  
+  <ResponseField name="method" type="string" required>
+    Method name to call on the object.
+  </ResponseField>
+  
+  <ResponseField name="args" type="any[]">
+    Array of arguments to pass to the method.
+  </ResponseField>
+  
+  <Accordion title="Example: OKX Wallet Integration">
+    ```json manifest.json
+    {
+      "permissions": {
+        "external": ["okxwallet.near"]
+      }
+    }
+    ```
+    
+    ```javascript executor.js
+    async function signAndSendTransaction(params) {
+      // Access window.okxwallet.near.signAndSendTransaction()
+      return await window.selector.external(
+        'okxwallet.near',
+        'signAndSendTransaction',
+        [params]
+      );
+    }
+    ```
+  </Accordion>
+</ParamField>
+
+## WalletConnect APIs
+
+Integrate with WalletConnect protocol. Requires `walletConnect` permission.
+
+<Warning>
+  WalletConnect APIs are only available if the dApp configured NEAR Connect with a WalletConnect client.
+</Warning>
+
+### Connection Management
+
+<CodeGroup>
+```javascript Connect
+// Initiate WalletConnect pairing
+const { uri } = await window.selector.walletConnect.connect({
+  requiredNamespaces: {
+    near: {
+      methods: ['near_signTransaction', 'near_signAndSendTransaction'],
+      chains: ['near:mainnet'],
+      events: []
+    }
+  }
+});
+
+// Show QR code with URI for user to scan
+showQRCode(uri);
+```
+
+```javascript Get Session
+// Get active WalletConnect session
+const session = await window.selector.walletConnect.getSession();
+
+if (session) {
+  console.log('Topic:', session.topic);
+  console.log('Namespaces:', session.namespaces);
+}
+```
+
+```javascript Make Request
+// Send request through WalletConnect
+const result = await window.selector.walletConnect.request({
+  topic: session.topic,
+  chainId: 'near:mainnet',
+  request: {
+    method: 'near_signAndSendTransaction',
+    params: [transaction]
+  }
+});
+```
+
+```javascript Disconnect
+// Disconnect WalletConnect session
+await window.selector.walletConnect.disconnect({
+  topic: session.topic
+});
+```
+
+```javascript Get Project ID
+// Get WalletConnect project ID
+const projectId = await window.selector.walletConnect.getProjectId();
+```
+</CodeGroup>
+
+<ParamField path="walletConnect.connect" type="function">
+  **Signature:** `walletConnect.connect(params: ConnectParams): Promise<{ uri: string, approval: () => Promise<any> }>`
+  
+  Initiate WalletConnect pairing.
+  
+  <Accordion title="ConnectParams">
+    ```typescript
+    interface ConnectParams {
+      requiredNamespaces: {
+        near: {
+          methods: string[];      // e.g., ['near_signTransaction']
+          chains: string[];       // e.g., ['near:mainnet']
+          events: string[];
+        }
+      }
+    }
+    ```
+  </Accordion>
+</ParamField>
+
+<ParamField path="walletConnect.getSession" type="function">
+  **Signature:** `walletConnect.getSession(): Promise<{ topic: string, namespaces: any } | null>`
+  
+  Get the current WalletConnect session, if any.
+</ParamField>
+
+<ParamField path="walletConnect.request" type="function">
+  **Signature:** `walletConnect.request(params: RequestParams): Promise<any>`
+  
+  Send a request through WalletConnect.
+  
+  <Accordion title="RequestParams">
+    ```typescript
+    interface RequestParams {
+      topic: string;              // Session topic
+      chainId: string;            // e.g., 'near:mainnet'
+      request: {
+        method: string;           // e.g., 'near_signTransaction'
+        params: any[];
+      }
+    }
+    ```
+  </Accordion>
+</ParamField>
+
+<ParamField path="walletConnect.disconnect" type="function">
+  **Signature:** `walletConnect.disconnect(params: { topic: string }): Promise<void>`
+  
+  Disconnect a WalletConnect session.
+</ParamField>
+
+<ParamField path="walletConnect.getProjectId" type="function">
+  **Signature:** `walletConnect.getProjectId(): Promise<string>`
+  
+  Get the WalletConnect project ID configured by the dApp.
+</ParamField>
+
+## Context Information
+
+### Location API
+
+Get information about where your wallet is running.
+
+```javascript
+// Get current page URL (dApp URL)
+const location = window.selector.location;
+console.log(location); // e.g., 'https://app.example.com'
+```
+
+<ParamField path="location" type="string">
+  **Type:** `string` (read-only)
+  
+  The origin of the dApp page (e.g., `'https://app.example.com'`).
+  
+  Useful for:
+  - Verifying the dApp domain
+  - Customizing wallet behavior per dApp
+  - Security checks
+</ParamField>
+
+## Permission-Gated APIs
+
+These APIs are only available if you request the corresponding permission in your manifest.
+
+### Clipboard (clipboardWrite)
+
+Copy text to user's clipboard.
+
+```javascript manifest.json
+{
+  "permissions": {
+    "clipboardWrite": true
+  }
+}
+```
+
+```javascript executor.js
+// Copy WalletConnect URI to clipboard
+await navigator.clipboard.writeText(uri);
+```
+
+### Clipboard Read (clipboardRead)
+
+Read from user's clipboard.
+
+```javascript manifest.json
+{
+  "permissions": {
+    "clipboardRead": true
+  }
+}
+```
+
+```javascript executor.js
+const text = await navigator.clipboard.readText();
+```
+
+### USB (usb)
+
+Access USB devices (for hardware wallets like Ledger).
+
+```javascript manifest.json
+{
+  "permissions": {
+    "usb": true
+  }
+}
+```
+
+```javascript executor.js
+const devices = await navigator.usb.getDevices();
+const device = await navigator.usb.requestDevice({
+  filters: [{ vendorId: 0x2c97 }] // Ledger
+});
+```
+
+### HID (hid)
+
+Access HID devices (for hardware wallets).
+
+```javascript manifest.json
+{
+  "permissions": {
+    "hid": true
+  }
+}
+```
+
+```javascript executor.js
+const devices = await navigator.hid.getDevices();
+const device = await navigator.hid.requestDevice({
+  filters: [{ vendorId: 0x2c97 }]
+});
+```
+
+## Error Handling
+
+All API calls can throw errors. Always handle them properly:
+
+```javascript
+try {
+  await window.selector.storage.set('key', 'value');
+} catch (error) {
+  console.error('Storage failed:', error);
+  // Handle error
+}
+
+try {
+  const windowId = await window.selector.open('https://wallet.example.com');
+  if (!windowId) {
+    throw new Error('Popup was blocked');
+  }
+} catch (error) {
+  if (error.message.includes('Permission denied')) {
+    console.error('URL not in allowsOpen list');
+  }
+}
+```
+
+## Common Patterns
+
+### Pattern: Open Wallet and Wait for Response
+
+```javascript
+async function signTransaction(params) {
+  // 1. Generate unique request ID
+  const requestId = crypto.randomUUID();
+  
+  // 2. Open wallet UI
+  const url = `https://wallet.example.com/sign?request=${requestId}`;
+  const windowId = await window.selector.open(url);
+  
+  // 3. Wait for response via postMessage
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      window.removeEventListener('message', handler);
+      reject(new Error('Request timeout'));
+    }, 5 * 60 * 1000);
+    
+    const handler = (event) => {
+      // Verify origin
+      if (event.origin !== 'https://wallet.example.com') return;
+      
+      // Check request ID
+      if (event.data.requestId === requestId) {
+        clearTimeout(timeout);
+        window.removeEventListener('message', handler);
+        
+        if (event.data.error) {
+          reject(new Error(event.data.error));
+        } else {
+          resolve(event.data.result);
+        }
+      }
+    };
+    
+    window.addEventListener('message', handler);
+  });
+}
+```
+
+### Pattern: Mobile Deep Link with Fallback
+
+```javascript
+async function openWallet(request) {
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  
+  if (isMobile) {
+    // Try native app with deep link
+    const deepLink = `walletapp://sign?data=${encodeURIComponent(JSON.stringify(request))}`;
+    await window.selector.open(deepLink);
+    
+    // Fallback to web after short delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Check if app opened (simplified)
+    if (document.visibilityState === 'visible') {
+      // App didn't open, show web wallet
+      const webLink = `https://wallet.example.com/app?data=${encodeURIComponent(JSON.stringify(request))}`;
+      await window.selector.open(webLink);
+    }
+  } else {
+    // Desktop: open web wallet in popup
+    const url = `https://wallet.example.com/sign?data=${encodeURIComponent(JSON.stringify(request))}`;
+    await window.selector.open(url, 'width=400,height=600');
+  }
+}
+```
+
+### Pattern: Persistent Session with Storage
+
+```javascript
+class WalletSession {
+  constructor(network) {
+    this.network = network;
+    this.storageKey = `session:${network}`;
+  }
+  
+  async load() {
+    const json = await window.selector.storage.get(this.storageKey);
+    return json ? JSON.parse(json) : null;
+  }
+  
+  async save(data) {
+    await window.selector.storage.set(
+      this.storageKey,
+      JSON.stringify(data)
+    );
+  }
+  
+  async clear() {
+    await window.selector.storage.remove(this.storageKey);
+  }
+  
+  async isAuthenticated() {
+    const session = await this.load();
+    return session?.accountId != null;
+  }
+}
+
+// Usage
+const session = new WalletSession('mainnet');
+
+if (await session.isAuthenticated()) {
+  const data = await session.load();
+  console.log('Logged in as:', data.accountId);
+} else {
+  // Need to sign in
+}
+```
+
+## Security Considerations
+
+<Warning>
+  **Important Security Notes:**
+  
+  1. **Origin Verification**: Always verify `event.origin` when handling postMessage events
+  2. **URL Validation**: Only open URLs that match your `allowsOpen` permissions
+  3. **Data Sanitization**: Never trust data from external sources without validation
+  4. **Sensitive Data**: Never store private keys or secrets in localStorage
+  5. **XSS Prevention**: Sanitize any user input before rendering in iframe UI
+</Warning>
+
+## API Availability
+
+API availability depends on permissions in your manifest:
+
+| API | Required Permission | Manifest Field |
+|-----|---------------------|----------------|
+| `storage.*` | Storage access | `permissions.storage: true` |
+| `open()` | URL whitelist | `permissions.allowsOpen: [...]` |
+| `external()` | External object access | `permissions.external: [...]` |
+| `walletConnect.*` | WalletConnect protocol | `permissions.walletConnect: true` |
+| `navigator.clipboard.writeText()` | Clipboard write | `permissions.clipboardWrite: true` |
+| `navigator.clipboard.readText()` | Clipboard read | `permissions.clipboardRead: true` |
+| `navigator.usb.*` | USB devices | `permissions.usb: true` |
+| `navigator.hid.*` | HID devices | `permissions.hid: true` |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Creating Executor" icon="code" href="/wallet-integration/creating-executor">
+    Learn how to build a wallet executor script
+  </Card>
+  
+  <Card title="Manifest Format" icon="file-code" href="/wallet-integration/manifest-format">
+    Configure permissions in manifest.json
+  </Card>
+  
+  <Card title="Testing" icon="flask" href="/wallet-integration/testing">
+    Test your wallet integration
+  </Card>
+</CardGroup>

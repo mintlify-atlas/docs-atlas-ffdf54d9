@@ -1,0 +1,142 @@
+---
+title: "Actions Overview"
+description: "Overview of NEAR action types and conversion utilities in NEAR Connect"
+---
+
+## Overview
+
+Actions represent operations that can be performed on the NEAR blockchain. NEAR Connect defines a set of `ConnectorAction` types that provide a standardized interface for various blockchain operations.
+
+## Action Types
+
+NEAR Connect supports the following action types:
+
+<CardGroup cols={2}>
+  <Card title="CreateAccount" icon="user-plus">
+    Create a new NEAR account
+  </Card>
+  <Card title="DeployContract" icon="code">
+    Deploy a smart contract to an account
+  </Card>
+  <Card title="FunctionCall" icon="function">
+    Call a smart contract method
+  </Card>
+  <Card title="Transfer" icon="arrow-right-arrow-left">
+    Transfer NEAR tokens
+  </Card>
+  <Card title="Stake" icon="coins">
+    Stake NEAR tokens for validation
+  </Card>
+  <Card title="AddKey" icon="key">
+    Add an access key to an account
+  </Card>
+  <Card title="DeleteKey" icon="key-slash">
+    Remove an access key from an account
+  </Card>
+  <Card title="DeleteAccount" icon="user-minus">
+    Delete an account and transfer remaining balance
+  </Card>
+  <Card title="UseGlobalContract" icon="globe">
+    Use a globally deployed contract
+  </Card>
+  <Card title="DeployGlobalContract" icon="upload">
+    Deploy a contract globally
+  </Card>
+</CardGroup>
+
+## ConnectorAction Type
+
+All action types are unified under the `ConnectorAction` union type:
+
+```typescript
+type ConnectorAction =
+  | CreateAccountAction
+  | DeployContractAction
+  | FunctionCallAction
+  | TransferAction
+  | StakeAction
+  | AddKeyAction
+  | DeleteKeyAction
+  | DeleteAccountAction
+  | UseGlobalContractAction
+  | DeployGlobalContractAction;
+```
+
+## nearActionsToConnectorActions
+
+Converts NEAR JS SDK actions to NEAR Connect connector actions.
+
+### Signature
+
+```typescript
+function nearActionsToConnectorActions(
+  actions: (Action | ConnectorAction)[]
+): ConnectorAction[];
+```
+
+### Parameters
+
+<ParamField path="actions" type="(Action | ConnectorAction)[]" required>
+  Array of NEAR JS SDK `Action` objects or `ConnectorAction` objects to convert
+</ParamField>
+
+### Returns
+
+Returns an array of `ConnectorAction` objects with normalized formats.
+
+### Example
+
+```typescript
+import { nearActionsToConnectorActions } from "@near-connect/core";
+import { functionCall, transfer } from "@near-js/transactions";
+
+const nearActions = [
+  functionCall({
+    methodName: "set_greeting",
+    args: { message: "Hello" },
+    gas: BigInt(30000000000000),
+    deposit: BigInt(0),
+  }),
+  transfer(BigInt(1000000000000000000000000)), // 1 NEAR
+];
+
+const connectorActions = nearActionsToConnectorActions(nearActions);
+// [
+//   {
+//     type: "FunctionCall",
+//     params: {
+//       methodName: "set_greeting",
+//       args: { message: "Hello" },
+//       gas: "30000000000000",
+//       deposit: "0"
+//     }
+//   },
+//   {
+//     type: "Transfer",
+//     params: { deposit: "1000000000000000000000000" }
+//   }
+// ]
+```
+
+### Behavior
+
+- If an action already has a `type` property (is already a `ConnectorAction`), it is returned as-is
+- NEAR JS SDK actions are converted to their corresponding `ConnectorAction` format
+- Function call arguments are automatically deserialized from `Uint8Array` to JSON objects
+- BigInt values (gas, deposit, stake) are converted to string format
+- Public keys are converted to their string representation
+- Throws an error if an unsupported action type is encountered
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Function Call Actions" href="/api/actions/function-call">
+    Learn about FunctionCallAction
+  </Card>
+  <Card title="Transfer Actions" href="/api/actions/transfer">
+    Learn about TransferAction and related actions
+  </Card>
+  <Card title="Key Management" href="/api/actions/key-management">
+    Learn about AddKeyAction and DeleteKeyAction
+  </Card>
+</CardGroup>

@@ -1,0 +1,181 @@
+---
+title: Introduction to NEAR Connect
+description: A zero-dependency, secure wallet connector for the NEAR blockchain with easily updatable wallet code and sandboxed execution
+---
+
+<img
+  className="block dark:hidden"
+  src="https://github.com/user-attachments/assets/c4422057-38bb-4cd9-8bd0-568e29f46280"
+  alt="NEAR Connect Hero"
+/>
+<img
+  className="hidden dark:block"
+  src="https://github.com/user-attachments/assets/c4422057-38bb-4cd9-8bd0-568e29f46280"
+  alt="NEAR Connect Hero Dark"
+/>
+
+## What is NEAR Connect?
+
+NEAR Connect is a robust, secure, and lightweight wallet connector for the NEAR blockchain. Unlike traditional wallet selectors, NEAR Connect provides a **secure execution environment** for integrating wallets, eliminating the need for a single monolithic registry of wallet connection code.
+
+<CardGroup cols={2}>
+  <Card title="Zero Dependencies" icon="feather">
+    Built without external dependencies for maximum security and minimal bundle size
+  </Card>
+  <Card title="Sandboxed Execution" icon="shield">
+    Wallet code runs in isolated sandboxed iframes for enhanced security
+  </Card>
+  <Card title="Auto-Updating Wallets" icon="rotate">
+    Wallets can update their integration code without requiring dApp updates
+  </Card>
+  <Card title="Easy Integration" icon="bolt">
+    Simple API that gets you connected in minutes, not hours
+  </Card>
+</CardGroup>
+
+## Why NEAR Connect?
+
+Traditional wallet selectors require maintaining a monolithic codebase where every wallet integration lives in a single repository. This creates several problems:
+
+- **Slow updates**: Wallet developers wait weeks or months for their updates to be merged and deployed
+- **Security risks**: All wallet code runs in your application's context with full access
+- **Maintenance burden**: A small team must review and maintain integration code for dozens of wallets
+- **Forced updates**: dApps must update their dependencies to get wallet improvements
+
+NEAR Connect solves these problems with a **revolutionary architecture**:
+
+<AccordionGroup>
+  <Accordion title="Secure Sandboxed Execution">
+    Each wallet's code runs in an isolated sandboxed iframe with limited permissions. The wallet can only access features explicitly granted in its manifest, preventing malicious code from compromising your dApp or users.
+  </Accordion>
+  
+  <Accordion title="Decentralized Wallet Registry">
+    Instead of bundling all wallet code, NEAR Connect loads wallet executors from their own hosted locations. Each wallet team maintains and updates their own integration script.
+  </Accordion>
+  
+  <Accordion title="Automatic Updates for All dApps">
+    When a wallet updates their executor script, all dApps using NEAR Connect automatically benefit from the improvements—no frontend updates required.
+  </Accordion>
+  
+  <Accordion title="Standardized Wallet Interface">
+    All wallets implement the same `NearWalletBase` interface, providing a consistent experience regardless of which wallet your users choose.
+  </Accordion>
+</AccordionGroup>
+
+## Key Features
+
+### Comprehensive Wallet Support
+
+NEAR Connect supports a wide range of wallets out of the box:
+
+- HOT Wallet
+- Meteor Wallet
+- Intear Wallet
+- MyNearWallet
+- Nightly Wallet
+- NEAR Mobile Wallet
+- Unity Wallet
+- OKX Wallet
+- NEAR CLI (via near-cli-rs)
+- Any wallet via WalletConnect
+- Browser extension wallets (injected)
+
+<Info>
+  New wallets can be added to the manifest without requiring any changes to your dApp code.
+</Info>
+
+### Advanced Transaction Support
+
+NEAR Connect supports both legacy and modern transaction formats:
+
+<CardGroup cols={2}>
+  <Card title="near-wallet-selector Format" icon="backward">
+    Backward-compatible actions using the classic selector format for easy migration
+  </Card>
+  <Card title="near-api-js Format" icon="forward">
+    Modern actions using `near-api-js` transaction creators (recommended)
+  </Card>
+</CardGroup>
+
+### Flexible Authentication Options
+
+```typescript
+// Simple sign in
+await connector.connect();
+
+// Sign in with message signature
+await connector.connect({
+  signMessageParams: {
+    message: "Sign in to Example App",
+    recipient: "Demo app",
+    nonce
+  }
+});
+
+// Sign in with limited access key (for seamless UX)
+const connector = new NearConnector({ 
+  signIn: { 
+    contractId: "game.near", 
+    methods: ["action"] 
+  } 
+});
+```
+
+<Warning>
+  Using limited access keys during initial sign-in requires an on-chain transaction, which may negatively impact user experience. Consider adding the key after users begin interacting with your app.
+</Warning>
+
+### Event-Driven Architecture
+
+React to wallet events in real-time:
+
+```typescript
+connector.on("wallet:signIn", async (event) => {
+  const wallet = await connector.wallet();
+  const address = event.accounts[0].accountId;
+  console.log(`User signed in: ${address}`);
+});
+
+connector.on("wallet:signOut", async () => {
+  console.log("User signed out");
+});
+```
+
+## How It Works
+
+NEAR Connect uses a three-layer architecture:
+
+<Steps>
+  <Step title="Manifest Registry">
+    A shared manifest file lists all available wallets with their metadata, capabilities, and executor URLs.
+  </Step>
+  
+  <Step title="Sandbox Execution">
+    When a user selects a wallet, NEAR Connect loads the wallet's executor script in a sandboxed iframe with restricted permissions.
+  </Step>
+  
+  <Step title="Secure Communication">
+    Your dApp communicates with the sandboxed wallet via `postMessage`, with NEAR Connect mediating all requests and enforcing security policies.
+  </Step>
+</Steps>
+
+<Note>
+  The auditable security surface is minimal—you only need to trust the sandbox implementation in NEAR Connect, not the wallet integration code.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install NEAR Connect in your project
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get connected to a wallet in 5 minutes
+  </Card>
+  <Card title="dApp Integration Guide" icon="book" href="/guides/dapp-integration">
+    Learn best practices for production apps
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/near-connector">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>

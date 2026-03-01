@@ -1,80 +1,444 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Get up and running with NEAR Connect in less than 5 minutes
 ---
 
-## Get started in three steps
+## Overview
 
-Get your documentation site running locally and make your first customization.
+This quick start guide will walk you through creating a basic wallet connection flow. You'll learn how to:
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+- Initialize the NEAR Connect connector
+- Listen for wallet events
+- Connect and disconnect wallets
+- Access connected accounts
+- Send your first transaction
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  This example uses vanilla JavaScript/TypeScript. See [Installation](/installation) for framework-specific examples.
 </Note>
+
+## Basic Setup
+
+<Steps>
+  <Step title="Initialize the connector">
+    Create a new `NearConnector` instance. This is the main entry point for all wallet interactions.
+
+    ```typescript
+    import { NearConnector } from "@hot-labs/near-connect";
+
+    const connector = new NearConnector({
+      network: "mainnet", // or "testnet"
+      providers: {
+        mainnet: ["https://rpc.mainnet.near.org"],
+        testnet: ["https://rpc.testnet.near.org"],
+      },
+    });
+    ```
+
+    <Info>
+      The connector automatically loads the wallet manifest and prepares available wallets.
+    </Info>
+  </Step>
+
+  <Step title="Set up event listeners">
+    Listen for sign-in and sign-out events to track wallet connection state.
+
+    ```typescript
+    import { NearWalletBase } from "@hot-labs/near-connect";
+
+    let currentWallet: NearWalletBase | null = null;
+    let currentAccount: string | null = null;
+
+    // Listen for successful sign in
+    connector.on("wallet:signIn", async (event) => {
+      currentWallet = await connector.wallet();
+      currentAccount = event.accounts[0].accountId;
+      
+      console.log(`Connected to ${currentAccount}`);
+      console.log(`Using wallet: ${currentWallet.manifest.name}`);
+    });
+
+    // Listen for sign out
+    connector.on("wallet:signOut", () => {
+      currentWallet = null;
+      currentAccount = null;
+      console.log("Disconnected from wallet");
+    });
+    ```
+  </Step>
+
+  <Step title="Connect a wallet">
+    Call `connect()` to show the wallet selection modal and initiate the connection flow.
+
+    ```typescript
+    async function connectWallet() {
+      try {
+        const wallet = await connector.connect();
+        console.log("Wallet connected:", wallet.manifest.name);
+      } catch (error) {
+        console.error("Failed to connect:", error);
+      }
+    }
+
+    // Trigger connection (e.g., from a button click)
+    connectWallet();
+    ```
+
+    <Info>
+      The `connect()` method returns a Promise that resolves when the user successfully signs in.
+    </Info>
+  </Step>
+
+  <Step title="Disconnect the wallet">
+    Allow users to sign out and clear their session.
+
+    ```typescript
+    async function disconnectWallet() {
+      try {
+        await connector.disconnect();
+        console.log("Wallet disconnected");
+      } catch (error) {
+        console.error("Failed to disconnect:", error);
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Complete Example
+
+Here's a complete working example that you can copy and paste:
+
+```typescript index.ts
+import { NearConnector, NearWalletBase } from "@hot-labs/near-connect";
+
+// Initialize connector
+const connector = new NearConnector({
+  network: "mainnet",
+  providers: {
+    mainnet: ["https://rpc.mainnet.near.org"],
+  },
+});
+
+let wallet: NearWalletBase | null = null;
+let accountId: string | null = null;
+
+// Set up event listeners
+connector.on("wallet:signIn", async (event) => {
+  wallet = await connector.wallet();
+  accountId = event.accounts[0].accountId;
+  updateUI();
+});
+
+connector.on("wallet:signOut", () => {
+  wallet = null;
+  accountId = null;
+  updateUI();
+});
+
+// Connect function
+async function connect() {
+  try {
+    await connector.connect();
+  } catch (error) {
+    console.error("Connection failed:", error);
+  }
+}
+
+// Disconnect function
+async function disconnect() {
+  try {
+    await connector.disconnect();
+  } catch (error) {
+    console.error("Disconnection failed:", error);
+  }
+}
+
+// Update UI based on connection state
+function updateUI() {
+  const button = document.getElementById("wallet-button");
+  if (button) {
+    button.textContent = accountId 
+      ? `Disconnect ${accountId}` 
+      : "Connect Wallet";
+    button.onclick = accountId ? disconnect : connect;
+  }
+}
+
+// Initialize
+updateUI();
+```
+
+```html index.html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>NEAR Connect Quick Start</title>
+</head>
+<body>
+  <h1>NEAR Connect Demo</h1>
+  <button id="wallet-button">Connect Wallet</button>
+  
+  <script type="module" src="./index.ts"></script>
+</body>
+</html>
+```
+
+## Sending Your First Transaction
+
+Once connected, you can send transactions using the wallet:
+
+```typescript
+import { NearWalletBase } from "@hot-labs/near-connect";
+
+async function sendTransaction(wallet: NearWalletBase, accountId: string) {
+  try {
+    const result = await wallet.signAndSendTransaction({
+      signerId: accountId,
+      receiverId: "contract.near",
+      actions: [
+        {
+          type: "FunctionCall",
+          params: {
+            methodName: "set_greeting",
+            args: { greeting: "Hello, NEAR!" },
+            gas: "30000000000000",
+            deposit: "0",
+          },
+        },
+      ],
+    });
+
+    console.log("Transaction successful:", result.transaction.hash);
+    return result;
+  } catch (error) {
+    console.error("Transaction failed:", error);
+    throw error;
+  }
+}
+```
+
+<Warning>
+  Always validate user input and handle errors appropriately in production applications.
+</Warning>
+
+## Advanced: Sign In with Message
+
+For authentication purposes, you can request a signed message during sign-in:
+
+```typescript
+// Generate a secure nonce
+const nonce = new Uint8Array(32);
+window.crypto.getRandomValues(nonce);
+
+// Connect with signed message
+await connector.connect({
+  signMessageParams: {
+    message: "Sign in to Example App",
+    recipient: "example.near",
+    nonce,
+  },
+});
+
+// Listen for the signed message
+connector.on("wallet:signInAndSignMessage", async (event) => {
+  const account = event.accounts[0];
+  console.log("Account ID:", account.accountId);
+  console.log("Signature:", account.signedMessage.signature);
+  console.log("Public Key:", account.signedMessage.publicKey);
+  
+  // Verify the signature on your backend
+  await verifySignature(account.signedMessage);
+});
+```
+
+<Info>
+  This pattern is useful for authenticating users without requiring a blockchain transaction.
+</Info>
+
+## React Example
+
+Here's how to use NEAR Connect in a React application:
+
+```tsx App.tsx
+import { useEffect, useState } from "react";
+import { NearConnector, NearWalletBase } from "@hot-labs/near-connect";
+
+function App() {
+  const [connector] = useState(() => new NearConnector({ network: "mainnet" }));
+  const [wallet, setWallet] = useState<NearWalletBase | null>(null);
+  const [account, setAccount] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Set up event listeners
+    connector.on("wallet:signIn", async (event) => {
+      const w = await connector.wallet();
+      setWallet(w);
+      setAccount(event.accounts[0].accountId);
+    });
+
+    connector.on("wallet:signOut", () => {
+      setWallet(null);
+      setAccount(null);
+    });
+
+    // Check if already connected
+    connector.getConnectedWallet()
+      .then(({ wallet, accounts }) => {
+        setWallet(wallet);
+        setAccount(accounts[0].accountId);
+      })
+      .catch(() => {
+        // Not connected
+      });
+  }, [connector]);
+
+  const handleConnect = async () => {
+    try {
+      await connector.connect();
+    } catch (error) {
+      console.error("Failed to connect:", error);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      await connector.disconnect();
+    } catch (error) {
+      console.error("Failed to disconnect:", error);
+    }
+  };
+
+  return (
+    <div>
+      <h1>NEAR Connect Demo</h1>
+      
+      {account ? (
+        <div>
+          <p>Connected: {account}</p>
+          <p>Wallet: {wallet?.manifest.name}</p>
+          <button onClick={handleDisconnect}>Disconnect</button>
+        </div>
+      ) : (
+        <button onClick={handleConnect}>Connect Wallet</button>
+      )}
+    </div>
+  );
+}
+
+export default App;
+```
+
+<Note>
+  The connector instance should be created once and reused. In React, use `useState` with a function initializer to ensure this.
+</Note>
+
+## Network Switching
+
+You can switch between mainnet and testnet:
+
+```typescript
+// Switch to testnet
+await connector.switchNetwork("testnet");
+
+// Switch back to mainnet
+await connector.switchNetwork("mainnet");
+```
+
+<Warning>
+  Switching networks will disconnect the current wallet and prompt the user to reconnect.
+</Warning>
+
+## Checking Connection Status
+
+To check if a wallet is currently connected:
+
+```typescript
+try {
+  const { wallet, accounts } = await connector.getConnectedWallet();
+  console.log("Connected:", accounts[0].accountId);
+  console.log("Using:", wallet.manifest.name);
+} catch (error) {
+  console.log("Not connected");
+}
+```
+
+## Error Handling
+
+Always handle potential errors in wallet operations:
+
+```typescript
+try {
+  await connector.connect();
+} catch (error) {
+  if (error.message === "User rejected") {
+    console.log("User cancelled wallet selection");
+  } else if (error.message === "No accounts found") {
+    console.log("No accounts available in wallet");
+  } else {
+    console.error("Unexpected error:", error);
+  }
+}
+```
+
+## Available Wallets
+
+You can check which wallets are available:
+
+```typescript
+// Wait for manifest to load
+await connector.whenManifestLoaded;
+
+// Get all available wallets
+const wallets = connector.availableWallets;
+
+console.log("Available wallets:");
+wallets.forEach((wallet) => {
+  console.log(`- ${wallet.manifest.name} (${wallet.manifest.id})`);
+});
+```
+
+## Next Steps
+
+Now that you have the basics, explore more advanced features:
+
+<CardGroup cols={2}>
+  <Card title="Sign Transactions" icon="signature" href="/guides/sign-transactions">
+    Learn how to construct and sign complex transactions
+  </Card>
+  <Card title="Sign Messages" icon="message" href="/guides/sign-messages">
+    Implement off-chain message signing for authentication
+  </Card>
+  <Card title="Event Handling" icon="bell" href="/guides/event-handling">
+    Master the event system for reactive UIs
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/near-connector">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Wallet modal not appearing">
+    Make sure the manifest has finished loading:
+    ```typescript
+    await connector.whenManifestLoaded;
+    await connector.connect();
+    ```
+  </Accordion>
+  
+  <Accordion title="Connection immediately fails">
+    Check that the wallet supports your selected network. Some wallets only support mainnet or testnet, not both.
+  </Accordion>
+  
+  <Accordion title="Transaction fails with 'No accounts found'">
+    This means the user is not signed in. Always check connection status before attempting transactions:
+    ```typescript
+    const { accounts } = await connector.getConnectedWallet();
+    if (accounts.length === 0) {
+      await connector.connect();
+    }
+    ```
+  </Accordion>
+</AccordionGroup>

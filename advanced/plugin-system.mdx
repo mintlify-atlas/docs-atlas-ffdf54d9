@@ -1,0 +1,327 @@
+---
+title: Plugin System
+description: Extend wallet functionality with the plugin system using connector.use()
+---
+
+## Overview
+
+The plugin system in NEAR Connect allows you to intercept and extend wallet methods across all wallet instances. This powerful middleware pattern lets you add custom logic like analytics tracking, error handling, or request/response transformation without modifying individual wallet implementations.
+
+## How Plugins Work
+
+Plugins act as middleware layers that wrap wallet methods. When you register a plugin using `connector.use()`, it creates a proxy around each wallet instance, intercepting method calls and allowing you to execute custom logic before and after the original method.
+
+<Note>
+  Plugins are applied to all wallets in the connector, providing a consistent extension mechanism across different wallet types (sandbox, injected, and parent frame wallets).
+</Note>
+
+## Plugin Interface
+
+A plugin is an object where each property corresponds to a wallet method you want to intercept. The plugin method receives the original arguments plus a `next()` function to call the original implementation.
+
+```typescript
+interface WalletPlugin {
+  // Intercept any wallet method
+  signIn?: (params: SignInParams, next: () => Promise<Account[]>) => Promise<Account[]>;
+  signOut?: (params: { network?: Network }, next: () => Promise<void>) => Promise<void>;
+  signAndSendTransaction?: (params: SignAndSendTransactionParams, next: () => Promise<FinalExecutionOutcome>) => Promise<FinalExecutionOutcome>;
+  // ... any other wallet methods
+  
+  // You can also add custom methods
+  [key: string]: (...args: any[]) => any;
+}
+```
+
+<Tip>
+  The `next()` function gives you complete control over when (or if) to execute the original wallet method, enabling powerful patterns like pre-validation, retry logic, or conditional execution.
+</Tip>
+
+## Registering a Plugin
+
+Use the `connector.use()` method to register a plugin. This method must be called after the connector is instantiated but can be called at any time.
+
+```typescript
+import { NearConnector } from "@hot-labs/near-connect";
+
+const connector = new NearConnector();
+
+// Register a plugin
+await connector.use({
+  signIn: async (params, next) => {
+    console.log("Sign in started", params);
+    const result = await next();
+    console.log("Sign in completed", result);
+    return result;
+  },
+  
+  signAndSendTransaction: async (params, next) => {
+    console.log("Transaction signing started", params);
+    const result = await next();
+    console.log("Transaction completed", result);
+    return result;
+  }
+});
+```
+
+## Plugin Implementation Details
+
+Here's how the plugin system is implemented in the source code:
+
+```typescript /home/daytona/workspace/source/src/NearConnector.ts:351-376
+async use(plugin: WalletPlugin): Promise<void> {
+  await this.whenManifestLoaded.catch(() => {});
+
+  this.wallets = this.wallets.map((wallet) => {
+    return new Proxy(wallet, {
+      get(target, prop, receiver) {
+        const originalValue = Reflect.get(target, prop, receiver);
+
+        // If plugin has this method and it's a function on the wallet
+        if (prop in plugin && typeof originalValue === "function") {
+          const pluginMethod = (plugin as any)[prop];
+
+          // Act as middleware, can call next method in line via next()
+          return function (this: any, ...args: any[]) {
+            const next = () => originalValue.apply(target, args);
+            // Pass all args if any exist, otherwise undefined
+            // this ensures next is always the last param
+            return args.length > 0 ? pluginMethod.call(this, ...args, next) : pluginMethod.call(this, undefined, next);
+          };
+        }
+
+        return originalValue;
+      },
+    }) as NearWalletBase;
+  });
+}
+```
+
+## Common Use Cases
+
+### Analytics Tracking
+
+Track wallet interactions for analytics purposes:
+
+```typescript
+await connector.use({
+  signIn: async (params, next) => {
+    const startTime = Date.now();
+    try {
+      const accounts = await next();
+      analytics.track("wallet_connected", {
+        duration: Date.now() - startTime,
+        accountCount: accounts.length,
+        network: params.network
+      });
+      return accounts;
+    } catch (error) {
+      analytics.track("wallet_connection_failed", { error: error.message });
+      throw error;
+    }
+  },
+  
+  signAndSendTransaction: async (params, next) => {
+    analytics.track("transaction_initiated", {
+      receiverId: params.receiverId,
+      actionCount: params.actions.length
+    });
+    const outcome = await next();
+    analytics.track("transaction_completed", {
+      transactionHash: outcome.transaction.hash
+    });
+    return outcome;
+  }
+});
+```
+
+### Error Handling and Retry Logic
+
+Add automatic retry logic for failed transactions:
+
+```typescript
+await connector.use({
+  signAndSendTransaction: async (params, next) => {
+    const maxRetries = 3;
+    let lastError;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await next();
+      } catch (error) {
+        lastError = error;
+        console.warn(`Transaction attempt ${attempt} failed:`, error);
+        
+        if (attempt < maxRetries) {
+          // Wait before retrying (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        }
+      }
+    }
+    
+    throw lastError;
+  }
+});
+```
+
+### Request Validation
+
+Validate transaction parameters before execution:
+
+```typescript
+await connector.use({
+  signAndSendTransaction: async (params, next) => {
+    // Validate the transaction before sending
+    if (!params.receiverId) {
+      throw new Error("receiverId is required");
+    }
+    
+    if (params.actions.length === 0) {
+      throw new Error("At least one action is required");
+    }
+    
+    // Check if sending to a known malicious contract
+    const blacklist = ["malicious.near", "scam.near"];
+    if (blacklist.includes(params.receiverId)) {
+      throw new Error(`Cannot send transaction to blacklisted contract: ${params.receiverId}`);
+    }
+    
+    return await next();
+  }
+});
+```
+
+### Response Transformation
+
+Transform or enhance the response from wallet methods:
+
+```typescript
+await connector.use({
+  signIn: async (params, next) => {
+    const accounts = await next();
+    
+    // Enhance account data with additional information
+    return accounts.map(account => ({
+      ...account,
+      displayName: account.accountId.split('.')[0],
+      network: params.network || 'mainnet',
+      connectedAt: new Date().toISOString()
+    }));
+  }
+});
+```
+
+### Logging and Debugging
+
+Add comprehensive logging for development and debugging:
+
+```typescript
+await connector.use({
+  signIn: async (params, next) => {
+    console.group("🔐 Sign In");
+    console.log("Parameters:", params);
+    
+    try {
+      const result = await next();
+      console.log("✅ Success:", result);
+      console.groupEnd();
+      return result;
+    } catch (error) {
+      console.error("❌ Failed:", error);
+      console.groupEnd();
+      throw error;
+    }
+  },
+  
+  signAndSendTransaction: async (params, next) => {
+    console.group("📤 Transaction");
+    console.log("Receiver:", params.receiverId);
+    console.log("Actions:", params.actions);
+    console.time("transaction-duration");
+    
+    try {
+      const result = await next();
+      console.timeEnd("transaction-duration");
+      console.log("✅ Transaction Hash:", result.transaction.hash);
+      console.groupEnd();
+      return result;
+    } catch (error) {
+      console.timeEnd("transaction-duration");
+      console.error("❌ Failed:", error);
+      console.groupEnd();
+      throw error;
+    }
+  }
+});
+```
+
+## Multiple Plugins
+
+You can call `connector.use()` multiple times to register multiple plugins. Each new plugin wraps the previous ones, creating a chain of middleware:
+
+```typescript
+// First plugin: logging
+await connector.use({
+  signIn: async (params, next) => {
+    console.log("[Logger] Sign in started");
+    const result = await next();
+    console.log("[Logger] Sign in completed");
+    return result;
+  }
+});
+
+// Second plugin: analytics
+await connector.use({
+  signIn: async (params, next) => {
+    console.log("[Analytics] Tracking sign in");
+    const result = await next();
+    analytics.track("wallet_connected", { accounts: result.length });
+    return result;
+  }
+});
+
+// Execution order when signIn is called:
+// 1. Analytics plugin (outer layer)
+// 2. Logging plugin (middle layer)
+// 3. Original wallet method (inner layer)
+```
+
+<Warning>
+  The order in which you register plugins matters. The last registered plugin will be the first to execute (outer layer), and the first registered plugin will be closest to the original wallet method (inner layer).
+</Warning>
+
+## Best Practices
+
+1. **Always call `next()`**: Unless you have a specific reason not to, always call the `next()` function to execute the original wallet method.
+
+2. **Preserve return types**: Make sure your plugin returns the same type as the original method to maintain type safety.
+
+3. **Handle errors gracefully**: Wrap `next()` calls in try-catch blocks if you need to handle or transform errors.
+
+4. **Keep plugins focused**: Each plugin should have a single responsibility (logging, analytics, validation, etc.).
+
+5. **Wait for manifest**: The `use()` method automatically waits for the manifest to load, but be aware that plugins are only applied to wallets that exist when the plugin is registered.
+
+## Type Safety
+
+The plugin system is fully typed using TypeScript. The `WalletPlugin` type is defined as:
+
+```typescript /home/daytona/workspace/source/src/types/plugin.ts:3-9
+export type WalletPlugin = Partial<{
+  [K in keyof NearWalletBase]: NearWalletBase[K] extends (...args: infer Args) => infer Return
+    ? (...args: [...Args, () => Return]) => Return
+    : never;
+}> & {
+  [key: string]: (...args: any[]) => any;
+};
+```
+
+This ensures that:
+- Plugin methods match the signature of wallet methods
+- The `next()` function is properly typed
+- TypeScript will catch type mismatches at compile time
+
+## Limitations
+
+- Plugins are applied to all wallets in the connector - there's no way to selectively apply a plugin to specific wallet types
+- Plugins registered after a user has already connected to a wallet will not affect that connection
+- The plugin system uses JavaScript Proxies, which have a small performance overhead

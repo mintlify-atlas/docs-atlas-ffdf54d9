@@ -1,0 +1,68 @@
+---
+title: Account Types
+description: Type definitions for NEAR account representations in NEAR Connect
+---
+
+## Account
+
+Represents a NEAR account with its identifier and optional public key.
+
+<ResponseField name="accountId" type="string" required>
+  The NEAR account identifier (e.g., "user.near" or "0x123...abc")
+</ResponseField>
+
+<ResponseField name="publicKey" type="string">
+  The public key associated with the account, typically in base58 format
+</ResponseField>
+
+### Example
+
+```typescript
+const account: Account = {
+  accountId: "alice.near",
+  publicKey: "ed25519:5Z7g..."
+};
+```
+
+## AccountWithSignedMessage
+
+Extends the `Account` type to include a signed message, used when signing in with message verification.
+
+<ResponseField name="accountId" type="string" required>
+  The NEAR account identifier (e.g., "user.near" or "0x123...abc")
+</ResponseField>
+
+<ResponseField name="publicKey" type="string">
+  The public key associated with the account, typically in base58 format
+</ResponseField>
+
+<ResponseField name="signedMessage" type="SignedMessage" required>
+  The signed message data returned after signing during sign-in. See [SignedMessage](/api/types/signing#signedmessage) for details.
+</ResponseField>
+
+### Example
+
+```typescript
+const accountWithMessage: AccountWithSignedMessage = {
+  accountId: "alice.near",
+  publicKey: "ed25519:5Z7g...",
+  signedMessage: {
+    accountId: "alice.near",
+    publicKey: "ed25519:5Z7g...",
+    signature: "ed25519:3N9w..."
+  }
+};
+```
+
+### Usage
+
+This type is primarily used with the `signInAndSignMessage` feature, which allows verifying account ownership during the sign-in process:
+
+```typescript
+connector.on("wallet:signInAndSignMessage", ({ accounts }) => {
+  accounts.forEach((account: AccountWithSignedMessage) => {
+    console.log(`Account: ${account.accountId}`);
+    console.log(`Signature: ${account.signedMessage.signature}`);
+  });
+});
+```

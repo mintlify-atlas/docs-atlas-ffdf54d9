@@ -1,0 +1,215 @@
+---
+title: Event Types
+description: Type definitions for event handling in NEAR Connect
+---
+
+## EventMap
+
+Defines all available events that can be emitted by the NEAR Connect connector.
+
+### wallet:signIn
+
+Emitted when a user successfully signs in to a wallet.
+
+<ResponseField name="wallet" type="NearWalletBase" required>
+  The wallet instance that the user signed in with
+</ResponseField>
+
+<ResponseField name="accounts" type="Account[]" required>
+  Array of accounts that were signed in. See [Account](/api/types/accounts#account).
+</ResponseField>
+
+<ResponseField name="success" type="boolean" required>
+  Whether the sign-in was successful
+</ResponseField>
+
+<ResponseField name="source" type="'signIn' | 'signInAndSignMessage'" required>
+  The method that triggered the sign-in event
+</ResponseField>
+
+#### Example
+
+```typescript
+connector.on("wallet:signIn", ({ wallet, accounts, success, source }) => {
+  if (success) {
+    console.log(`Signed in with ${wallet.manifest.name}`);
+    console.log(`Accounts:`, accounts.map(a => a.accountId));
+    console.log(`Sign-in source: ${source}`);
+  }
+});
+```
+
+### wallet:signInAndSignMessage
+
+Emitted when a user signs in with message signing, providing account ownership verification.
+
+<ResponseField name="wallet" type="NearWalletBase" required>
+  The wallet instance that the user signed in with
+</ResponseField>
+
+<ResponseField name="accounts" type="AccountWithSignedMessage[]" required>
+  Array of accounts with signed messages. See [AccountWithSignedMessage](/api/types/accounts#accountwithsignedmessage).
+</ResponseField>
+
+<ResponseField name="success" type="boolean" required>
+  Whether the sign-in and message signing were successful
+</ResponseField>
+
+#### Example
+
+```typescript
+connector.on("wallet:signInAndSignMessage", ({ wallet, accounts, success }) => {
+  if (success) {
+    accounts.forEach(account => {
+      console.log(`Account: ${account.accountId}`);
+      console.log(`Signature: ${account.signedMessage.signature}`);
+      // Verify the signature on your backend
+      verifySignature(account.signedMessage);
+    });
+  }
+});
+```
+
+### wallet:signOut
+
+Emitted when a user signs out from a wallet.
+
+<ResponseField name="payload" type="any">
+  Event payload (currently unspecified)
+</ResponseField>
+
+#### Example
+
+```typescript
+connector.on("wallet:signOut", () => {
+  console.log("User signed out");
+  // Clear user session, redirect to login, etc.
+});
+```
+
+### selector:manifestUpdated
+
+Emitted when a wallet manifest is updated.
+
+<ResponseField name="payload" type="any">
+  Event payload (currently unspecified)
+</ResponseField>
+
+#### Example
+
+```typescript
+connector.on("selector:manifestUpdated", () => {
+  console.log("Wallet manifest updated");
+  // Refresh wallet list or update UI
+});
+```
+
+### selector:walletsChanged
+
+Emitted when the list of available wallets changes.
+
+<ResponseField name="payload" type="any">
+  Event payload (currently unspecified)
+</ResponseField>
+
+#### Example
+
+```typescript
+connector.on("selector:walletsChanged", () => {
+  console.log("Available wallets changed");
+  // Refresh wallet selector UI
+});
+```
+
+## EventType
+
+A union type of all available event names.
+
+```typescript
+type EventType = 
+  | "wallet:signIn"
+  | "wallet:signInAndSignMessage"
+  | "wallet:signOut"
+  | "selector:manifestUpdated"
+  | "selector:walletsChanged";
+```
+
+### Example
+
+```typescript
+const eventName: EventType = "wallet:signIn";
+
+// Type-safe event handling
+if (eventName === "wallet:signIn") {
+  // TypeScript knows the payload type
+}
+```
+
+## EventCallback
+
+A generic type for event callback functions. The callback type is parameterized by the event type to ensure type safety.
+
+```typescript
+type EventCallback<K extends EventType> = (payload: EventMap[K]) => void;
+```
+
+### Example
+
+```typescript
+// Type-safe callback for wallet:signIn event
+const onSignIn: EventCallback<"wallet:signIn"> = ({ wallet, accounts, success, source }) => {
+  if (success) {
+    console.log(`Signed in: ${accounts[0].accountId}`);
+  }
+};
+
+connector.on("wallet:signIn", onSignIn);
+
+// Type-safe callback for wallet:signInAndSignMessage event
+const onSignInWithMessage: EventCallback<"wallet:signInAndSignMessage"> = 
+  ({ wallet, accounts, success }) => {
+    if (success) {
+      // TypeScript knows accounts is AccountWithSignedMessage[]
+      const signature = accounts[0].signedMessage.signature;
+    }
+  };
+
+connector.on("wallet:signInAndSignMessage", onSignInWithMessage);
+```
+
+## Usage Patterns
+
+### Listening to Multiple Events
+
+```typescript
+const connector = await nearConnect();
+
+// Sign in events
+connector.on("wallet:signIn", ({ accounts }) => {
+  console.log("Signed in:", accounts);
+});
+
+// Sign out events
+connector.on("wallet:signOut", () => {
+  console.log("Signed out");
+});
+
+// Wallet changes
+connector.on("selector:walletsChanged", () => {
+  console.log("Wallets changed");
+});
+```
+
+### Removing Event Listeners
+
+```typescript
+const handler: EventCallback<"wallet:signIn"> = ({ accounts }) => {
+  console.log("Signed in:", accounts);
+};
+
+// Add listener
+connector.on("wallet:signIn", handler);
+
+// Remove listener
+connector.off("wallet:signIn", handler);
+```

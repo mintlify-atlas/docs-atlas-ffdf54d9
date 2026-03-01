@@ -1,0 +1,188 @@
+---
+title: "FunctionCallAction"
+description: "Execute smart contract methods on the NEAR blockchain"
+---
+
+## Overview
+
+The `FunctionCallAction` is used to call methods on NEAR smart contracts. It specifies the method name, arguments, gas allocation, and optional token deposit.
+
+## Type Definition
+
+```typescript
+interface FunctionCallAction {
+  type: "FunctionCall";
+  params: {
+    methodName: string;
+    args: object;
+    gas: string;
+    deposit: string;
+  };
+}
+```
+
+## Parameters
+
+<ParamField path="type" type="'FunctionCall'" required>
+  The action type identifier. Must be `"FunctionCall"`.
+</ParamField>
+
+<ParamField path="params" type="object" required>
+  The parameters for the function call.
+
+  <Expandable title="params properties">
+    <ParamField path="params.methodName" type="string" required>
+      The name of the smart contract method to call.
+    </ParamField>
+
+    <ParamField path="params.args" type="object" required>
+      The arguments to pass to the method as a JSON object. This object will be serialized and passed to the contract.
+    </ParamField>
+
+    <ParamField path="params.gas" type="string" required>
+      The amount of gas to attach to the function call, specified as a string in yoctoNEAR units.
+      
+      Common values:
+      - `"30000000000000"` (30 TGas) - typical for simple calls
+      - `"100000000000000"` (100 TGas) - for more complex operations
+      - `"300000000000000"` (300 TGas) - maximum for a single call
+    </ParamField>
+
+    <ParamField path="params.deposit" type="string" required>
+      The amount of NEAR tokens to attach to the call, specified as a string in yoctoNEAR units (1 NEAR = 10^24 yoctoNEAR).
+      
+      Use `"0"` for calls that don't require a deposit.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Examples
+
+### Simple Function Call
+
+Call a method without a deposit:
+
+```typescript
+const action: FunctionCallAction = {
+  type: "FunctionCall",
+  params: {
+    methodName: "get_greeting",
+    args: {},
+    gas: "30000000000000",
+    deposit: "0",
+  },
+};
+```
+
+### Function Call with Arguments
+
+Call a method with structured arguments:
+
+```typescript
+const action: FunctionCallAction = {
+  type: "FunctionCall",
+  params: {
+    methodName: "set_user_profile",
+    args: {
+      name: "Alice",
+      age: 30,
+      interests: ["blockchain", "crypto"],
+    },
+    gas: "50000000000000",
+    deposit: "0",
+  },
+};
+```
+
+### Function Call with Deposit
+
+Call a payable method with a token deposit:
+
+```typescript
+const action: FunctionCallAction = {
+  type: "FunctionCall",
+  params: {
+    methodName: "purchase_nft",
+    args: {
+      token_id: "123",
+    },
+    gas: "100000000000000",
+    deposit: "1000000000000000000000000", // 1 NEAR
+  },
+};
+```
+
+### Using with signAndSendTransaction
+
+```typescript
+import { signAndSendTransaction } from "@near-connect/core";
+
+const result = await signAndSendTransaction({
+  receiverId: "contract.near",
+  actions: [
+    {
+      type: "FunctionCall",
+      params: {
+        methodName: "increment_counter",
+        args: { step: 1 },
+        gas: "30000000000000",
+        deposit: "0",
+      },
+    },
+  ],
+});
+```
+
+## Conversion from NEAR JS SDK
+
+When using `nearActionsToConnectorActions`, NEAR JS SDK function call actions are automatically converted:
+
+```typescript
+import { functionCall } from "@near-js/transactions";
+import { nearActionsToConnectorActions } from "@near-connect/core";
+
+const nearAction = functionCall({
+  methodName: "transfer",
+  args: { receiver_id: "alice.near", amount: "1000" },
+  gas: BigInt(30000000000000),
+  deposit: BigInt(0),
+});
+
+const connectorActions = nearActionsToConnectorActions([nearAction]);
+// [
+//   {
+//     type: "FunctionCall",
+//     params: {
+//       methodName: "transfer",
+//       args: { receiver_id: "alice.near", amount: "1000" },
+//       gas: "30000000000000",
+//       deposit: "0"
+//     }
+//   }
+// ]
+```
+
+Key conversions:
+- Arguments are automatically deserialized from `Uint8Array` to JSON objects
+- BigInt values for `gas` and `deposit` are converted to strings
+
+## Gas Considerations
+
+<Warning>
+  Always ensure sufficient gas is attached. Insufficient gas will cause the transaction to fail and consume all attached gas.
+</Warning>
+
+- Minimum gas per transaction: ~2.5 TGas
+- Maximum gas per function call: 300 TGas
+- Unused gas is refunded to the caller
+
+## Related Actions
+
+<CardGroup cols={2}>
+  <Card title="DeployContractAction" icon="code">
+    Deploy a smart contract before calling its methods
+  </Card>
+  <Card title="TransferAction" href="/api/actions/transfer">
+    Transfer NEAR tokens without calling a contract
+  </Card>
+</CardGroup>

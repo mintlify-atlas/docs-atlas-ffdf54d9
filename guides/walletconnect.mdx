@@ -1,0 +1,440 @@
+---
+title: 'WalletConnect Integration'
+description: 'Guide for integrating WalletConnect support in NEAR Connect'
+---
+
+## Overview
+
+NEAR Connect supports WalletConnect, enabling users to connect with mobile wallets and other WalletConnect-compatible providers. This guide covers setup and integration.
+
+<Note>
+WalletConnect support is optional. Without it, only wallets that don't require WalletConnect will be available in the selector.
+</Note>
+
+## Installation
+
+Install the WalletConnect Sign Client:
+
+<CodeGroup>
+```bash npm
+npm install @walletconnect/sign-client
+```
+
+```bash yarn
+yarn add @walletconnect/sign-client
+```
+
+```bash pnpm
+pnpm add @walletconnect/sign-client
+```
+</CodeGroup>
+
+## Setup
+
+### Get a Project ID
+
+<Steps>
+  <Step title="Create a WalletConnect Cloud account">
+    Visit [WalletConnect Cloud](https://cloud.walletconnect.com/) and create an account.
+  </Step>
+
+  <Step title="Create a new project">
+    Create a new project and obtain your Project ID.
+  </Step>
+
+  <Step title="Configure your project">
+    Add your app's metadata:
+    - **Name**: Your dApp's name
+    - **Description**: Brief description
+    - **URL**: Your dApp's URL
+    - **Icons**: App icon URLs
+  </Step>
+</Steps>
+
+### Initialize WalletConnect
+
+Create a WalletConnect client and pass it to NearConnector:
+
+```typescript
+import { NearConnector } from "@hot-labs/near-connect";
+import SignClient from "@walletconnect/sign-client";
+
+// Initialize WalletConnect
+const walletConnect = SignClient.init({
+  projectId: "YOUR_PROJECT_ID",
+  metadata: {
+    name: "My NEAR dApp",
+    description: "My awesome NEAR application",
+    url: "https://myapp.com",
+    icons: ["https://myapp.com/icon.png"],
+  },
+});
+
+// Initialize NEAR Connect with WalletConnect
+const connector = new NearConnector({
+  walletConnect,
+  network: "mainnet",
+});
+```
+
+<Warning>
+**Never commit your Project ID to public repositories.** Use environment variables:
+
+```typescript
+const walletConnect = SignClient.init({
+  projectId: process.env.WALLETCONNECT_PROJECT_ID,
+  // ...
+});
+```
+</Warning>
+
+## Using Reown AppKit
+
+Alternatively, you can use Reown's AppKit (formerly WalletConnect Modal):
+
+```typescript
+import { createAppKit } from "@reown/appkit";
+import { NearConnector } from "@hot-labs/near-connect";
+
+// Create AppKit with NEAR support
+const walletConnect = createAppKit({
+  projectId: "YOUR_PROJECT_ID",
+  chains: ["near:mainnet", "near:testnet"],
+  metadata: {
+    name: "My NEAR dApp",
+    description: "My awesome NEAR application",
+    url: "https://myapp.com",
+    icons: ["https://myapp.com/icon.png"],
+  },
+});
+
+const connector = new NearConnector({ walletConnect });
+```
+
+## Complete Example
+
+<CodeGroup>
+```typescript React
+import { FC, useState, useEffect } from "react";
+import { NearConnector } from "@hot-labs/near-connect";
+import SignClient from "@walletconnect/sign-client";
+
+export const App: FC = () => {
+  const [connector, setConnector] = useState<NearConnector>();
+  const [account, setAccount] = useState<string>();
+
+  useEffect(() => {
+    // Initialize WalletConnect
+    const walletConnect = SignClient.init({
+      projectId: process.env.REACT_APP_WALLETCONNECT_PROJECT_ID!,
+      metadata: {
+        name: "Example App",
+        description: "Example NEAR dApp",
+        url: "https://example.com",
+        icons: ["/favicon.ico"],
+      },
+    });
+
+    // Initialize connector
+    const nearConnector = new NearConnector({
+      walletConnect,
+      network: "mainnet",
+    });
+
+    // Listen for sign in
+    nearConnector.on("wallet:signIn", async (event) => {
+      setAccount(event.accounts[0].accountId);
+    });
+
+    nearConnector.on("wallet:signOut", () => {
+      setAccount(undefined);
+    });
+
+    setConnector(nearConnector);
+  }, []);
+
+  const handleConnect = async () => {
+    if (!connector) return;
+    
+    if (account) {
+      await connector.disconnect();
+    } else {
+      await connector.connect();
+    }
+  };
+
+  if (!connector) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <button onClick={handleConnect}>
+        {account ? `Disconnect ${account}` : "Connect Wallet"}
+      </button>
+    </div>
+  );
+};
+```
+
+```typescript Next.js
+import { useEffect, useState } from "react";
+import { NearConnector } from "@hot-labs/near-connect";
+import SignClient from "@walletconnect/sign-client";
+
+export default function Home() {
+  const [connector, setConnector] = useState<NearConnector>();
+
+  useEffect(() => {
+    // Only initialize on client side
+    if (typeof window === "undefined") return;
+
+    const init = async () => {
+      const walletConnect = await SignClient.init({
+        projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
+        metadata: {
+          name: "Next.js NEAR App",
+          description: "Next.js app with NEAR Connect",
+          url: process.env.NEXT_PUBLIC_URL!,
+          icons: ["/favicon.ico"],
+        },
+      });
+
+      const nearConnector = new NearConnector({
+        walletConnect,
+        network: "mainnet",
+      });
+
+      setConnector(nearConnector);
+    };
+
+    init();
+  }, []);
+
+  if (!connector) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <button onClick={() => connector.connect()}>
+        Connect Wallet
+      </button>
+    </div>
+  );
+}
+```
+</CodeGroup>
+
+## Available Wallets
+
+With WalletConnect enabled, additional wallets become available:
+
+- Any wallet supporting WalletConnect on NEAR
+- Mobile wallets (through QR code scanning)
+- Desktop wallets with WalletConnect integration
+
+<Tip>
+Wallets that require WalletConnect will only appear in the selector if you provide a WalletConnect client.
+</Tip>
+
+## Features
+
+WalletConnect-enabled wallets support all standard NEAR Connect features:
+
+### Sign In
+
+```typescript
+await connector.connect();
+```
+
+### Sign and Send Transactions
+
+```typescript
+const wallet = await connector.wallet();
+
+await wallet.signAndSendTransaction({
+  receiverId: "contract.near",
+  actions: [{
+    type: "FunctionCall",
+    params: {
+      methodName: "method_name",
+      args: {},
+      gas: "30000000000000",
+      deposit: "0",
+    },
+  }],
+});
+```
+
+### Sign Messages
+
+```typescript
+const wallet = await connector.wallet();
+const nonce = new Uint8Array(crypto.getRandomValues(new Uint8Array(32)));
+
+const signedMessage = await wallet.signMessage({
+  message: "Hello, NEAR!",
+  recipient: "My dApp",
+  nonce,
+});
+```
+
+## Network Configuration
+
+Configure WalletConnect for both mainnet and testnet:
+
+```typescript
+const walletConnect = SignClient.init({
+  projectId: "YOUR_PROJECT_ID",
+  metadata: {
+    name: "My dApp",
+    description: "NEAR dApp",
+    url: "https://myapp.com",
+    icons: ["https://myapp.com/icon.png"],
+  },
+});
+
+const connector = new NearConnector({
+  walletConnect,
+  network: "mainnet", // or "testnet"
+});
+
+// Switch networks
+await connector.switchNetwork("testnet");
+```
+
+## Debugging
+
+Enable debug mode for WalletConnect:
+
+```typescript
+import SignClient from "@walletconnect/sign-client";
+import { LogLevel } from "@walletconnect/logger";
+
+const walletConnect = SignClient.init({
+  projectId: "YOUR_PROJECT_ID",
+  metadata: { /* ... */ },
+  logger: LogLevel.debug,
+});
+```
+
+Enable debug mode for NEAR Connect:
+
+```typescript
+const connector = new NearConnector({
+  walletConnect,
+  logger: {
+    log: (...args) => console.log("[NEAR]", ...args),
+  },
+});
+```
+
+## Error Handling
+
+Handle WalletConnect-specific errors:
+
+```typescript
+try {
+  await connector.connect();
+} catch (error) {
+  if (error.message.includes("User cancelled")) {
+    console.log("User closed WalletConnect modal");
+  } else if (error.message.includes("No wallet selected")) {
+    console.log("No WalletConnect wallet available");
+  } else {
+    console.error("Connection error:", error);
+  }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Initialize early">
+    Initialize the WalletConnect client as early as possible in your app lifecycle. The initialization is asynchronous and can take a moment.
+  </Accordion>
+
+  <Accordion title="Use environment variables">
+    Store your WalletConnect Project ID in environment variables, never in your source code:
+    ```bash
+    REACT_APP_WALLETCONNECT_PROJECT_ID=your_project_id
+    NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id
+    ```
+  </Accordion>
+
+  <Accordion title="Provide clear metadata">
+    Use accurate and descriptive metadata. This information is displayed to users in wallet apps and helps build trust.
+  </Accordion>
+
+  <Accordion title="Handle initialization failures">
+    WalletConnect initialization can fail (network issues, invalid project ID). Handle failures gracefully:
+    ```typescript
+    try {
+      const walletConnect = await SignClient.init({ /* ... */ });
+      const connector = new NearConnector({ walletConnect });
+    } catch (error) {
+      console.error("WalletConnect init failed:", error);
+      // Fall back to connector without WalletConnect
+      const connector = new NearConnector();
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Test with real devices">
+    Test WalletConnect integration with actual mobile devices, not just desktop browsers. The QR code scanning flow is critical.
+  </Accordion>
+</AccordionGroup>
+
+## Common Issues
+
+### Wallet doesn't appear
+
+**Problem**: WalletConnect-compatible wallets don't show in the selector.
+
+**Solution**: Ensure you've passed the `walletConnect` client to `NearConnector`:
+
+```typescript
+const connector = new NearConnector({
+  walletConnect, // Don't forget this!
+});
+```
+
+### Invalid Project ID
+
+**Problem**: Error about invalid or missing Project ID.
+
+**Solution**: Verify your Project ID is correct and has no extra spaces or quotes:
+
+```typescript
+const walletConnect = SignClient.init({
+  projectId: "abc123...", // Exact ID from WalletConnect Cloud
+  // ...
+});
+```
+
+### Modal doesn't open
+
+**Problem**: WalletConnect modal doesn't appear when connecting.
+
+**Solution**: Check that you're using a compatible WalletConnect version and that the modal package is installed.
+
+### Session persistence issues
+
+**Problem**: Users need to reconnect after page refresh.
+
+**Solution**: WalletConnect handles session persistence automatically. Ensure you're not clearing localStorage or cookies that WalletConnect uses.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="dApp Integration" icon="code" href="/guides/dapp-integration">
+    Complete guide for integrating NEAR Connect
+  </Card>
+  <Card title="Sign Transactions" icon="signature" href="/guides/sign-transactions">
+    Learn how to sign and send transactions
+  </Card>
+  <Card title="Event Handling" icon="bolt" href="/guides/event-handling">
+    Handle wallet events in your application
+  </Card>
+</CardGroup>

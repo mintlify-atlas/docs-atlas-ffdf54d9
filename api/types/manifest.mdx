@@ -1,0 +1,284 @@
+---
+title: Wallet Manifest Types
+description: Type definitions for wallet manifests, features, and permissions in NEAR Connect
+---
+
+## WalletManifest
+
+Defines the metadata and capabilities of a NEAR wallet.
+
+<ResponseField name="id" type="string" required>
+  Unique identifier for the wallet (e.g., "my-wallet")
+</ResponseField>
+
+<ResponseField name="platform" type="string[]" required>
+  Array of supported platforms (e.g., `["browser", "mobile", "desktop"]`)
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Human-readable name of the wallet
+</ResponseField>
+
+<ResponseField name="icon" type="string" required>
+  URL or data URI of the wallet's icon/logo
+</ResponseField>
+
+<ResponseField name="description" type="string" required>
+  Brief description of the wallet
+</ResponseField>
+
+<ResponseField name="website" type="string" required>
+  Official website URL for the wallet
+</ResponseField>
+
+<ResponseField name="version" type="string" required>
+  Semantic version of the wallet (e.g., "1.0.0")
+</ResponseField>
+
+<ResponseField name="executor" type="string" required>
+  The executor type or URL for the wallet's runtime environment
+</ResponseField>
+
+<ResponseField name="type" type="'sandbox' | 'injected'" required>
+  The execution model for the wallet:
+  - `"sandbox"`: Runs in an isolated sandbox environment
+  - `"injected"`: Injected directly into the page context
+</ResponseField>
+
+<ResponseField name="permissions" type="WalletPermissions" required>
+  Security permissions required by the wallet. See [WalletPermissions](#walletpermissions).
+</ResponseField>
+
+<ResponseField name="features" type="WalletFeatures" required>
+  Capabilities supported by the wallet. See [WalletFeatures](#walletfeatures).
+</ResponseField>
+
+<ResponseField name="debug" type="boolean">
+  Whether debug mode is enabled for the wallet
+</ResponseField>
+
+### Example
+
+```typescript
+const manifest: WalletManifest = {
+  id: "my-wallet",
+  platform: ["browser"],
+  name: "My NEAR Wallet",
+  icon: "https://example.com/icon.png",
+  description: "A secure NEAR wallet",
+  website: "https://example.com",
+  version: "1.0.0",
+  executor: "https://executor.example.com",
+  type: "sandbox",
+  permissions: {
+    storage: true,
+    external: ["https://api.example.com"]
+  },
+  features: {
+    signMessage: true,
+    signTransaction: true,
+    signAndSendTransaction: true,
+    signAndSendTransactions: true,
+    signInWithoutAddKey: false,
+    signInAndSignMessage: true,
+    signDelegateActions: true,
+    mainnet: true,
+    testnet: true
+  }
+};
+```
+
+## WalletFeatures
+
+Defines which features and capabilities are supported by a wallet.
+
+<ResponseField name="signMessage" type="boolean" required>
+  Whether the wallet supports signing arbitrary messages
+</ResponseField>
+
+<ResponseField name="signTransaction" type="boolean" required>
+  Whether the wallet supports signing transactions without sending them
+</ResponseField>
+
+<ResponseField name="signAndSendTransaction" type="boolean" required>
+  Whether the wallet can sign and send a single transaction
+</ResponseField>
+
+<ResponseField name="signAndSendTransactions" type="boolean" required>
+  Whether the wallet can sign and send multiple transactions in a batch
+</ResponseField>
+
+<ResponseField name="signInWithoutAddKey" type="boolean" required>
+  Whether the wallet supports signing in without creating an access key (view-only mode)
+</ResponseField>
+
+<ResponseField name="signInAndSignMessage" type="boolean" required>
+  Whether the wallet supports signing a message during the sign-in process for account verification
+</ResponseField>
+
+<ResponseField name="signDelegateActions" type="boolean" required>
+  Whether the wallet supports signing delegate actions (meta-transactions)
+</ResponseField>
+
+<ResponseField name="mainnet" type="boolean" required>
+  Whether the wallet supports NEAR mainnet
+</ResponseField>
+
+<ResponseField name="testnet" type="boolean" required>
+  Whether the wallet supports NEAR testnet
+</ResponseField>
+
+### Example
+
+```typescript
+const features: WalletFeatures = {
+  signMessage: true,
+  signTransaction: true,
+  signAndSendTransaction: true,
+  signAndSendTransactions: true,
+  signInWithoutAddKey: false,
+  signInAndSignMessage: true,
+  signDelegateActions: true,
+  mainnet: true,
+  testnet: true
+};
+
+// Check if wallet supports a specific feature
+if (wallet.manifest.features.signInAndSignMessage) {
+  // Use signInAndSignMessage feature
+  const accounts = await wallet.signInAndSignMessage({
+    messageParams: {
+      message: "Verify account",
+      recipient: "app.near",
+      nonce: new Uint8Array(32)
+    }
+  });
+}
+```
+
+## WalletPermissions
+
+Defines the security permissions required by a wallet.
+
+<ResponseField name="storage" type="boolean">
+  Whether the wallet requires access to browser storage (localStorage/sessionStorage)
+</ResponseField>
+
+<ResponseField name="external" type="string[]">
+  Array of external domains/URLs that the wallet needs to communicate with
+</ResponseField>
+
+<ResponseField name="walletConnect" type="boolean">
+  Whether the wallet requires WalletConnect protocol access
+</ResponseField>
+
+<ResponseField name="allowsOpen" type="string[]">
+  Array of URL patterns that the wallet is allowed to open
+</ResponseField>
+
+<ResponseField name="clipboardRead" type="boolean">
+  Whether the wallet requires clipboard read access
+</ResponseField>
+
+<ResponseField name="clipboardWrite" type="boolean">
+  Whether the wallet requires clipboard write access
+</ResponseField>
+
+<ResponseField name="usb" type="boolean">
+  Whether the wallet requires USB device access (e.g., for hardware wallets)
+</ResponseField>
+
+<ResponseField name="hid" type="boolean">
+  Whether the wallet requires HID (Human Interface Device) access (e.g., for hardware wallets)
+</ResponseField>
+
+### Example
+
+```typescript
+const permissions: WalletPermissions = {
+  storage: true,
+  external: [
+    "https://api.near.org",
+    "https://rpc.mainnet.near.org"
+  ],
+  walletConnect: true,
+  allowsOpen: [
+    "https://wallet.example.com/*"
+  ],
+  clipboardRead: false,
+  clipboardWrite: true,
+  usb: false,
+  hid: false
+};
+```
+
+### Hardware Wallet Example
+
+```typescript
+const hardwareWalletPermissions: WalletPermissions = {
+  storage: true,
+  external: ["https://rpc.mainnet.near.org"],
+  walletConnect: false,
+  usb: true,  // Requires USB access for Ledger
+  hid: true,  // Requires HID access for Ledger
+  clipboardRead: false,
+  clipboardWrite: false
+};
+```
+
+## Usage Patterns
+
+### Filtering Wallets by Feature
+
+```typescript
+const connector = await nearConnect();
+const wallets = await connector.getWallets();
+
+// Find wallets that support message signing
+const messagingWallets = wallets.filter(
+  wallet => wallet.manifest.features.signInAndSignMessage
+);
+
+// Find wallets that support delegate actions
+const delegateWallets = wallets.filter(
+  wallet => wallet.manifest.features.signDelegateActions
+);
+
+// Find mainnet-only wallets
+const mainnetWallets = wallets.filter(
+  wallet => wallet.manifest.features.mainnet && !wallet.manifest.features.testnet
+);
+```
+
+### Checking Permissions
+
+```typescript
+const wallet = await connector.getWallet("my-wallet");
+const { permissions } = wallet.manifest;
+
+// Check if wallet needs special permissions
+if (permissions.usb || permissions.hid) {
+  console.log("This is a hardware wallet");
+}
+
+if (permissions.walletConnect) {
+  console.log("This wallet uses WalletConnect");
+}
+
+if (permissions.external && permissions.external.length > 0) {
+  console.log("External domains:", permissions.external);
+}
+```
+
+### Accessing Wallet Information
+
+```typescript
+const wallet = await connector.getWallet("my-wallet");
+const { manifest } = wallet;
+
+console.log(`Name: ${manifest.name}`);
+console.log(`Version: ${manifest.version}`);
+console.log(`Type: ${manifest.type}`);
+console.log(`Platforms: ${manifest.platform.join(", ")}`);
+console.log(`Website: ${manifest.website}`);
+```

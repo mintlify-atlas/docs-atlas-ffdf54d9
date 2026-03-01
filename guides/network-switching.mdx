@@ -1,0 +1,484 @@
+---
+title: 'Network Switching'
+description: 'Guide for switching between NEAR mainnet and testnet'
+---
+
+## Overview
+
+NEAR Connect supports seamless switching between mainnet and testnet networks. This guide covers how to implement network switching in your dApp.
+
+## Default Network
+
+Set the default network when initializing the connector:
+
+```typescript
+import { NearConnector } from "@hot-labs/near-connect";
+
+const connector = new NearConnector({
+  network: "mainnet", // or "testnet"
+});
+```
+
+<Tip>
+Use `"testnet"` for development and testing, `"mainnet"` for production.
+</Tip>
+
+## Switching Networks
+
+Use the `switchNetwork()` method to switch between networks:
+
+```typescript
+// Switch to testnet
+await connector.switchNetwork("testnet");
+
+// Switch to mainnet
+await connector.switchNetwork("mainnet");
+```
+
+<Warning>
+**Important**: Switching networks will disconnect the current wallet and clear the session. Users will need to sign in again after switching.
+</Warning>
+
+## How It Works
+
+When you call `switchNetwork()`:
+
+1. The current wallet is disconnected (if connected)
+2. The network is changed
+3. The `wallet:signOut` event is emitted
+4. Users must sign in again with the new network
+
+```typescript
+connector.on("wallet:signOut", () => {
+  console.log("User disconnected due to network switch");
+  // Update your UI to show "Connect" button
+});
+
+await connector.switchNetwork("testnet");
+
+// Now prompt user to connect again
+await connector.connect();
+```
+
+## Network-Specific Sign In
+
+You can specify different sign-in parameters for different networks:
+
+```typescript
+// Switch and sign in with network-specific contract
+await connector.switchNetwork("testnet", {
+  contractId: "contract.testnet",
+  methodNames: ["method1", "method2"],
+});
+
+// Then connect
+await connector.connect();
+```
+
+## Current Network
+
+Access the current network:
+
+```typescript
+const currentNetwork = connector.network;
+console.log(`Current network: ${currentNetwork}`); // "mainnet" or "testnet"
+```
+
+## Network-Specific Operations
+
+Many wallet methods accept an optional `network` parameter:
+
+### Sign and Send Transaction
+
+```typescript
+const wallet = await connector.wallet();
+
+await wallet.signAndSendTransaction({
+  network: "testnet", // Override current network
+  receiverId: "contract.testnet",
+  actions: [{
+    type: "FunctionCall",
+    params: {
+      methodName: "method_name",
+      args: {},
+      gas: "30000000000000",
+      deposit: "0",
+    },
+  }],
+});
+```
+
+### Sign Message
+
+```typescript
+const nonce = new Uint8Array(crypto.getRandomValues(new Uint8Array(32)));
+
+const signedMessage = await wallet.signMessage({
+  message: "Hello",
+  recipient: "My dApp",
+  nonce,
+  network: "testnet", // Override current network
+});
+```
+
+### Get Accounts
+
+```typescript
+const accounts = await wallet.getAccounts({
+  network: "testnet", // Override current network
+});
+```
+
+## Complete Example
+
+<CodeGroup>
+```tsx React
+import { FC, useState, useEffect } from "react";
+import { NearConnector, NearWalletBase } from "@hot-labs/near-connect";
+
+export const App: FC = () => {
+  const [connector] = useState(() => new NearConnector({
+    network: "mainnet",
+  }));
+  
+  const [network, setNetwork] = useState<"mainnet" | "testnet">("mainnet");
+  const [account, setAccount] = useState<string>();
+  const [wallet, setWallet] = useState<NearWalletBase>();
+
+  useEffect(() => {
+    connector.on("wallet:signIn", async (event) => {
+      setWallet(await connector.wallet());
+      setAccount(event.accounts[0].accountId);
+      setNetwork(connector.network);
+    });
+
+    connector.on("wallet:signOut", () => {
+      setWallet(undefined);
+      setAccount(undefined);
+    });
+
+    // Check existing connection
+    connector.getConnectedWallet()
+      .then(({ wallet, accounts }) => {
+        setWallet(wallet);
+        setAccount(accounts[0].accountId);
+        setNetwork(connector.network);
+      })
+      .catch(() => {});
+  }, [connector]);
+
+  const handleNetworkSwitch = async (newNetwork: "mainnet" | "testnet") => {
+    if (newNetwork === network) return;
+    
+    await connector.switchNetwork(newNetwork);
+    setNetwork(newNetwork);
+    
+    // Optionally auto-reconnect
+    // await connector.connect();
+  };
+
+  return (
+    <div>
+      <div>
+        <label>Network:</label>
+        <select 
+          value={network} 
+          onChange={(e) => handleNetworkSwitch(e.target.value as any)}
+          disabled={!!account}
+        >
+          <option value="mainnet">Mainnet</option>
+          <option value="testnet">Testnet</option>
+        </select>
+        {account && (
+          <p>⚠️ Disconnect wallet to switch networks</p>
+        )}
+      </div>
+
+      {account ? (
+        <div>
+          <p>Connected: {account}</p>
+          <p>Network: {network}</p>
+          <button onClick={() => connector.disconnect()}>
+            Disconnect
+          </button>
+        </div>
+      ) : (
+        <button onClick={() => connector.connect()}>
+          Connect to {network}
+        </button>
+      )}
+    </div>
+  );
+};
+```
+
+```typescript Vanilla JavaScript
+import { NearConnector } from "@hot-labs/near-connect";
+
+const connector = new NearConnector({ network: "mainnet" });
+
+let currentAccount = null;
+let currentNetwork = "mainnet";
+
+// Set up event listeners
+connector.on("wallet:signIn", (event) => {
+  currentAccount = event.accounts[0].accountId;
+  currentNetwork = connector.network;
+  updateUI();
+});
+
+connector.on("wallet:signOut", () => {
+  currentAccount = null;
+  updateUI();
+});
+
+// Network switcher
+const networkSelect = document.getElementById("network");
+networkSelect.addEventListener("change", async (e) => {
+  const newNetwork = e.target.value;
+  
+  if (currentAccount) {
+    if (!confirm("Switching networks will disconnect your wallet. Continue?")) {
+      networkSelect.value = currentNetwork;
+      return;
+    }
+  }
+  
+  await connector.switchNetwork(newNetwork);
+  currentNetwork = newNetwork;
+  updateUI();
+});
+
+// Connect button
+document.getElementById("connect").addEventListener("click", async () => {
+  if (currentAccount) {
+    await connector.disconnect();
+  } else {
+    await connector.connect();
+  }
+});
+
+function updateUI() {
+  const connectBtn = document.getElementById("connect");
+  const accountEl = document.getElementById("account");
+  const networkEl = document.getElementById("network");
+  
+  networkEl.value = currentNetwork;
+  networkEl.disabled = !!currentAccount;
+  
+  if (currentAccount) {
+    connectBtn.textContent = "Disconnect";
+    accountEl.textContent = `Connected: ${currentAccount} (${currentNetwork})`;
+  } else {
+    connectBtn.textContent = `Connect to ${currentNetwork}`;
+    accountEl.textContent = "Not connected";
+  }
+}
+
+updateUI();
+```
+</CodeGroup>
+
+## Wallet Compatibility
+
+Not all wallets support both networks. Filter wallets by network support:
+
+```typescript
+const connector = new NearConnector({
+  features: {
+    testnet: true, // Only show wallets that support testnet
+  },
+});
+
+// Check available wallets for current network
+const availableWallets = connector.availableWallets;
+console.log(`${availableWallets.length} wallets support ${connector.network}`);
+```
+
+<Note>
+When you switch to testnet, wallets that don't support testnet will automatically be filtered out from the selector.
+</Note>
+
+## Network-Specific Configuration
+
+### Custom RPC Providers
+
+Specify different RPC endpoints for each network:
+
+```typescript
+const connector = new NearConnector({
+  network: "mainnet",
+  providers: {
+    mainnet: ["https://rpc.mainnet.near.org"],
+    testnet: ["https://rpc.testnet.near.org"],
+  },
+});
+```
+
+### Network-Specific Wallets
+
+Exclude wallets from specific networks:
+
+```typescript
+const connector = new NearConnector({
+  network: "mainnet",
+  excludedWallets: ["testnet-only-wallet"],
+});
+```
+
+## Environment-Based Configuration
+
+Set network based on environment:
+
+<CodeGroup>
+```typescript React
+const connector = new NearConnector({
+  network: process.env.REACT_APP_NETWORK === "production" 
+    ? "mainnet" 
+    : "testnet",
+});
+```
+
+```typescript Next.js
+const connector = new NearConnector({
+  network: process.env.NEXT_PUBLIC_NETWORK as "mainnet" | "testnet",
+});
+```
+
+```typescript Vite
+const connector = new NearConnector({
+  network: import.meta.env.VITE_NETWORK as "mainnet" | "testnet",
+});
+```
+</CodeGroup>
+
+## Account ID Detection
+
+Detect which network an account belongs to:
+
+```typescript
+function detectNetwork(accountId: string): "mainnet" | "testnet" {
+  if (accountId.endsWith(".testnet")) {
+    return "testnet";
+  }
+  return "mainnet";
+}
+
+connector.on("wallet:signIn", (event) => {
+  const accountId = event.accounts[0].accountId;
+  const detectedNetwork = detectNetwork(accountId);
+  
+  if (detectedNetwork !== connector.network) {
+    console.warn(
+      `Account is from ${detectedNetwork} but connector is on ${connector.network}`
+    );
+  }
+});
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Disconnect before switching">
+    Always disconnect the wallet before switching networks to avoid confusion:
+    ```typescript
+    if (account) {
+      await connector.disconnect();
+    }
+    await connector.switchNetwork("testnet");
+    ```
+  </Accordion>
+
+  <Accordion title="Show clear network indicators">
+    Display the current network prominently in your UI:
+    ```tsx
+    <div className="network-badge">
+      {network === "testnet" && "🧪 Testnet"}
+      {network === "mainnet" && "🌐 Mainnet"}
+    </div>
+    ```
+  </Accordion>
+
+  <Accordion title="Warn before switching">
+    Prompt users before switching networks if they're connected:
+    ```typescript
+    if (account && !confirm("Switching will disconnect your wallet. Continue?")) {
+      return;
+    }
+    await connector.switchNetwork(newNetwork);
+    ```
+  </Accordion>
+
+  <Accordion title="Handle testnet-only accounts">
+    Detect and handle testnet-specific accounts appropriately:
+    ```typescript
+    if (accountId.endsWith(".testnet") && connector.network === "mainnet") {
+      alert("This appears to be a testnet account. Switch to testnet?");
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Use environment variables">
+    Configure networks through environment variables for different deployment environments:
+    ```bash
+    # .env.production
+    REACT_APP_NETWORK=mainnet
+    
+    # .env.development
+    REACT_APP_NETWORK=testnet
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Common Issues
+
+### Wrong network after switch
+
+**Problem**: Wallet connects to wrong network after switching.
+
+**Solution**: Ensure you're calling `switchNetwork()` before `connect()`:
+
+```typescript
+await connector.switchNetwork("testnet");
+await connector.connect(); // Connects to testnet
+```
+
+### Wallet not available on testnet
+
+**Problem**: Previously available wallet disappears after switching to testnet.
+
+**Solution**: The wallet doesn't support testnet. Check wallet features:
+
+```typescript
+const wallets = connector.availableWallets;
+wallets.forEach((wallet) => {
+  console.log(wallet.manifest.name, wallet.manifest.features.testnet);
+});
+```
+
+### Account persists after switch
+
+**Problem**: Account state remains after switching networks.
+
+**Solution**: Ensure you clear account state in the `wallet:signOut` event:
+
+```typescript
+connector.on("wallet:signOut", () => {
+  setAccount(undefined);
+  setWallet(undefined);
+});
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="dApp Integration" icon="code" href="/guides/dapp-integration">
+    Complete integration guide
+  </Card>
+  <Card title="Event Handling" icon="bolt" href="/guides/event-handling">
+    Handle wallet events
+  </Card>
+  <Card title="Sign Transactions" icon="signature" href="/guides/sign-transactions">
+    Sign and send transactions
+  </Card>
+</CardGroup>

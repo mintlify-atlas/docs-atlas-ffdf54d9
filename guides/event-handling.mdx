@@ -1,0 +1,607 @@
+---
+title: 'Event Handling'
+description: 'Guide for handling wallet events in NEAR Connect'
+---
+
+## Overview
+
+NEAR Connect uses an event-driven architecture to notify your application about wallet state changes. This guide covers all available events and how to use them effectively.
+
+## Event System
+
+NEAR Connect provides a typed event emitter that ensures type safety for your event handlers:
+
+```typescript
+import { NearConnector } from "@hot-labs/near-connect";
+
+const connector = new NearConnector();
+
+// Subscribe to events
+connector.on("wallet:signIn", (event) => {
+  // event is fully typed
+  console.log(event.accounts);
+});
+```
+
+## Available Events
+
+### wallet:signIn
+
+Emitted when a user successfully signs in to a wallet.
+
+```typescript
+connector.on("wallet:signIn", (event) => {
+  console.log("Sign in source:", event.source); // "signIn" | "signInAndSignMessage"
+  console.log("Wallet:", event.wallet.manifest.name);
+  console.log("Success:", event.success);
+  
+  event.accounts.forEach((account) => {
+    console.log("Account ID:", account.accountId);
+    console.log("Public Key:", account.publicKey);
+  });
+});
+```
+
+**Event payload**:
+
+```typescript
+interface WalletSignInEvent {
+  wallet: NearWalletBase;
+  accounts: Account[];
+  success: boolean;
+  source: "signIn" | "signInAndSignMessage";
+}
+
+interface Account {
+  accountId: string;
+  publicKey?: string;
+}
+```
+
+<Note>
+The `source` field indicates how the user signed in:
+- `"signIn"`: Standard sign-in
+- `"signInAndSignMessage"`: Sign-in with signed message
+</Note>
+
+### wallet:signInAndSignMessage
+
+Emitted when a user signs in with a message (using `signMessageParams`).
+
+```typescript
+connector.on("wallet:signInAndSignMessage", (event) => {
+  console.log("Wallet:", event.wallet.manifest.name);
+  console.log("Success:", event.success);
+  
+  event.accounts.forEach((account) => {
+    console.log("Account:", account.accountId);
+    console.log("Public Key:", account.signedMessage.publicKey);
+    console.log("Signature:", account.signedMessage.signature);
+  });
+});
+```
+
+**Event payload**:
+
+```typescript
+interface WalletSignInAndSignMessageEvent {
+  wallet: NearWalletBase;
+  accounts: AccountWithSignedMessage[];
+  success: boolean;
+}
+
+interface AccountWithSignedMessage {
+  accountId: string;
+  publicKey?: string;
+  signedMessage: SignedMessage;
+}
+
+interface SignedMessage {
+  accountId: string;
+  publicKey: string;
+  signature: string;
+}
+```
+
+<Tip>
+When `wallet:signInAndSignMessage` is emitted, `wallet:signIn` is also emitted with `source` set to `"signInAndSignMessage"`.
+</Tip>
+
+### wallet:signOut
+
+Emitted when a user signs out from a wallet.
+
+```typescript
+connector.on("wallet:signOut", (event) => {
+  console.log("User signed out");
+  console.log("Success:", event.success);
+  // Clear user state, redirect to home, etc.
+});
+```
+
+**Event payload**:
+
+```typescript
+interface WalletSignOutEvent {
+  success: boolean;
+}
+```
+
+### selector:walletsChanged
+
+Emitted when the list of available wallets changes (e.g., when a wallet is injected).
+
+```typescript
+connector.on("selector:walletsChanged", () => {
+  console.log("Available wallets changed");
+  const wallets = connector.availableWallets;
+  console.log(`Now ${wallets.length} wallets available`);
+});
+```
+
+### selector:manifestUpdated
+
+Emitted when the wallet manifest is updated.
+
+```typescript
+connector.on("selector:manifestUpdated", () => {
+  console.log("Wallet manifest updated");
+  console.log("Version:", connector.manifest.version);
+});
+```
+
+## Event Methods
+
+### on()
+
+Subscribe to an event:
+
+```typescript
+connector.on("wallet:signIn", (event) => {
+  console.log("Signed in:", event.accounts[0].accountId);
+});
+```
+
+### once()
+
+Subscribe to an event for a single emission:
+
+```typescript
+connector.once("wallet:signIn", (event) => {
+  console.log("First sign in:", event.accounts[0].accountId);
+  // This handler will not be called again
+});
+```
+
+### off()
+
+Unsubscribe from an event:
+
+```typescript
+const handler = (event) => {
+  console.log("Signed in:", event.accounts[0].accountId);
+};
+
+connector.on("wallet:signIn", handler);
+
+// Later, unsubscribe
+connector.off("wallet:signIn", handler);
+```
+
+<Warning>
+**Important**: When using `off()`, you must pass the exact same function reference that was used with `on()`. Arrow functions created inline won't match:
+
+```typescript
+// This won't work:
+connector.on("wallet:signIn", (e) => console.log(e));
+connector.off("wallet:signIn", (e) => console.log(e)); // Different function!
+
+// This works:
+const handler = (e) => console.log(e);
+connector.on("wallet:signIn", handler);
+connector.off("wallet:signIn", handler); // Same function reference
+```
+</Warning>
+
+### removeAllListeners()
+
+Remove all listeners for an event or all events:
+
+```typescript
+// Remove all listeners for a specific event
+connector.removeAllListeners("wallet:signIn");
+
+// Remove all listeners for all events
+connector.removeAllListeners();
+```
+
+## Common Patterns
+
+### React Integration
+
+<CodeGroup>
+```tsx useState Hook
+import { FC, useState, useEffect } from "react";
+import { NearConnector, NearWalletBase } from "@hot-labs/near-connect";
+
+export const App: FC = () => {
+  const [connector] = useState(() => new NearConnector());
+  const [account, setAccount] = useState<string>();
+  const [wallet, setWallet] = useState<NearWalletBase>();
+
+  useEffect(() => {
+    // Set up event listeners
+    connector.on("wallet:signIn", async (event) => {
+      setAccount(event.accounts[0].accountId);
+      setWallet(await connector.wallet());
+    });
+
+    connector.on("wallet:signOut", () => {
+      setAccount(undefined);
+      setWallet(undefined);
+    });
+
+    // Check for existing connection
+    connector.getConnectedWallet()
+      .then(({ wallet, accounts }) => {
+        setWallet(wallet);
+        setAccount(accounts[0].accountId);
+      })
+      .catch(() => {});
+  }, [connector]);
+
+  return (
+    <div>
+      {account ? (
+        <p>Connected: {account}</p>
+      ) : (
+        <button onClick={() => connector.connect()}>
+          Connect
+        </button>
+      )}
+    </div>
+  );
+};
+```
+
+```tsx Custom Hook
+import { useState, useEffect } from "react";
+import { NearConnector, NearWalletBase } from "@hot-labs/near-connect";
+
+export function useNearWallet() {
+  const [connector] = useState(() => new NearConnector());
+  const [account, setAccount] = useState<string>();
+  const [wallet, setWallet] = useState<NearWalletBase>();
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    connector.on("wallet:signIn", async (event) => {
+      setAccount(event.accounts[0].accountId);
+      setWallet(await connector.wallet());
+    });
+
+    connector.on("wallet:signOut", () => {
+      setAccount(undefined);
+      setWallet(undefined);
+    });
+
+    // Check existing connection
+    connector.getConnectedWallet()
+      .then(({ wallet, accounts }) => {
+        setWallet(wallet);
+        setAccount(accounts[0].accountId);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [connector]);
+
+  const connect = () => connector.connect();
+  const disconnect = () => connector.disconnect();
+
+  return {
+    connector,
+    wallet,
+    account,
+    loading,
+    connect,
+    disconnect,
+  };
+}
+
+// Usage
+export function MyComponent() {
+  const { account, connect, disconnect } = useNearWallet();
+
+  return (
+    <button onClick={account ? disconnect : connect}>
+      {account ? `Disconnect ${account}` : "Connect"}
+    </button>
+  );
+}
+```
+</CodeGroup>
+
+### Vue Integration
+
+```vue
+<template>
+  <div>
+    <button v-if="!account" @click="connect">
+      Connect Wallet
+    </button>
+    <div v-else>
+      <p>Connected: {{ account }}</p>
+      <button @click="disconnect">Disconnect</button>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted } from "vue";
+import { NearConnector } from "@hot-labs/near-connect";
+
+const connector = new NearConnector();
+const account = ref<string>();
+
+onMounted(() => {
+  connector.on("wallet:signIn", (event) => {
+    account.value = event.accounts[0].accountId;
+  });
+
+  connector.on("wallet:signOut", () => {
+    account.value = undefined;
+  });
+
+  // Check existing connection
+  connector.getConnectedWallet()
+    .then(({ accounts }) => {
+      account.value = accounts[0].accountId;
+    })
+    .catch(() => {});
+});
+
+const connect = () => connector.connect();
+const disconnect = () => connector.disconnect();
+</script>
+```
+
+### Svelte Integration
+
+```svelte
+<script lang="ts">
+  import { onMount } from "svelte";
+  import { NearConnector } from "@hot-labs/near-connect";
+
+  const connector = new NearConnector();
+  let account: string | undefined;
+
+  onMount(() => {
+    connector.on("wallet:signIn", (event) => {
+      account = event.accounts[0].accountId;
+    });
+
+    connector.on("wallet:signOut", () => {
+      account = undefined;
+    });
+
+    // Check existing connection
+    connector.getConnectedWallet()
+      .then(({ accounts }) => {
+        account = accounts[0].accountId;
+      })
+      .catch(() => {});
+  });
+
+  const connect = () => connector.connect();
+  const disconnect = () => connector.disconnect();
+</script>
+
+{#if account}
+  <div>
+    <p>Connected: {account}</p>
+    <button on:click={disconnect}>Disconnect</button>
+  </div>
+{:else}
+  <button on:click={connect}>Connect Wallet</button>
+{/if}
+```
+
+### State Management
+
+<CodeGroup>
+```typescript Redux
+import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { NearConnector, NearWalletBase } from "@hot-labs/near-connect";
+
+interface WalletState {
+  connector: NearConnector | null;
+  wallet: NearWalletBase | null;
+  account: string | null;
+}
+
+const initialState: WalletState = {
+  connector: null,
+  wallet: null,
+  account: null,
+};
+
+const walletSlice = createSlice({
+  name: "wallet",
+  initialState,
+  reducers: {
+    setConnector: (state, action: PayloadAction<NearConnector>) => {
+      state.connector = action.payload;
+    },
+    setWallet: (state, action: PayloadAction<NearWalletBase | null>) => {
+      state.wallet = action.payload;
+    },
+    setAccount: (state, action: PayloadAction<string | null>) => {
+      state.account = action.payload;
+    },
+  },
+});
+
+export const { setConnector, setWallet, setAccount } = walletSlice.actions;
+export default walletSlice.reducer;
+
+// Setup function
+export function setupWalletConnector(dispatch: any) {
+  const connector = new NearConnector();
+  
+  connector.on("wallet:signIn", async (event) => {
+    dispatch(setAccount(event.accounts[0].accountId));
+    dispatch(setWallet(await connector.wallet()));
+  });
+  
+  connector.on("wallet:signOut", () => {
+    dispatch(setAccount(null));
+    dispatch(setWallet(null));
+  });
+  
+  dispatch(setConnector(connector));
+  return connector;
+}
+```
+
+```typescript Zustand
+import { create } from "zustand";
+import { NearConnector, NearWalletBase } from "@hot-labs/near-connect";
+
+interface WalletStore {
+  connector: NearConnector;
+  wallet: NearWalletBase | null;
+  account: string | null;
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
+}
+
+const connector = new NearConnector();
+
+export const useWalletStore = create<WalletStore>((set, get) => {
+  // Set up event listeners
+  connector.on("wallet:signIn", async (event) => {
+    set({
+      account: event.accounts[0].accountId,
+      wallet: await connector.wallet(),
+    });
+  });
+
+  connector.on("wallet:signOut", () => {
+    set({ account: null, wallet: null });
+  });
+
+  // Check existing connection
+  connector.getConnectedWallet()
+    .then(({ wallet, accounts }) => {
+      set({ wallet, account: accounts[0].accountId });
+    })
+    .catch(() => {});
+
+  return {
+    connector,
+    wallet: null,
+    account: null,
+    connect: () => connector.connect(),
+    disconnect: () => connector.disconnect(),
+  };
+});
+```
+</CodeGroup>
+
+## Error Handling
+
+Handle errors in event listeners:
+
+```typescript
+connector.on("wallet:signIn", async (event) => {
+  try {
+    const wallet = await connector.wallet();
+    const accounts = await wallet.getAccounts();
+    // Update your state
+  } catch (error) {
+    console.error("Failed to get wallet:", error);
+    // Handle error (show notification, etc.)
+  }
+});
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Set up listeners early">
+    Register event listeners before calling `connect()` to ensure you don't miss any events:
+    ```typescript
+    const connector = new NearConnector();
+    
+    // Register listeners first
+    connector.on("wallet:signIn", handler);
+    
+    // Then connect
+    await connector.connect();
+    ```
+  </Accordion>
+
+  <Accordion title="Clean up listeners">
+    Remove event listeners when components unmount to prevent memory leaks:
+    ```typescript
+    useEffect(() => {
+      const handler = (event) => { /* ... */ };
+      connector.on("wallet:signIn", handler);
+      
+      return () => {
+        connector.off("wallet:signIn", handler);
+      };
+    }, []);
+    ```
+  </Accordion>
+
+  <Accordion title="Handle both signIn events">
+    When using `signInAndSignMessage`, listen for both events:
+    ```typescript
+    connector.on("wallet:signIn", (event) => {
+      // Update UI for all sign-ins
+    });
+    
+    connector.on("wallet:signInAndSignMessage", (event) => {
+      // Handle signed message
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Use once() for one-time actions">
+    Use `once()` for actions that should only happen once:
+    ```typescript
+    connector.once("wallet:signIn", (event) => {
+      // Show welcome message only once
+      showWelcome(event.accounts[0].accountId);
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Check success flag">
+    Always check the `success` flag in event payloads:
+    ```typescript
+    connector.on("wallet:signIn", (event) => {
+      if (event.success) {
+        // Update state
+      } else {
+        // Handle failure
+      }
+    });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="dApp Integration" icon="code" href="/guides/dapp-integration">
+    Complete integration guide
+  </Card>
+  <Card title="Sign In" icon="arrow-right-to-bracket" href="/guides/sign-in">
+    Learn about sign-in methods
+  </Card>
+  <Card title="Sign Transactions" icon="signature" href="/guides/sign-transactions">
+    Sign and send transactions
+  </Card>
+</CardGroup>

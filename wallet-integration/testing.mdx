@@ -1,0 +1,732 @@
+---
+title: "Testing Wallet Integrations"
+description: "Debug and test your wallet integration locally before publishing, including debug mode and testing strategies"
+---
+
+Testing your wallet integration thoroughly before publishing ensures a smooth experience for users. NEAR Connect provides several tools to help you debug and test your wallet.
+
+## Debug Mode
+
+Debug mode allows you to test your wallet without publishing it to the official repository.
+
+### Enable Debug Mode
+
+<Steps>
+  <Step title="Open Developer Console">
+    Open your browser's developer console (F12 or Cmd+Option+I on Mac).
+  </Step>
+  
+  <Step title="Register Debug Wallet">
+    Call the `registerDebugWallet` method with your wallet manifest:
+    
+    ```javascript
+    await connector.registerDebugWallet({
+      id: "my-test-wallet",
+      name: "My Test Wallet",
+      icon: "https://example.com/icon.png",
+      description: "Test wallet for development",
+      website: "https://example.com",
+      version: "1.0.0",
+      executor: "http://localhost:3000/wallet-executor.js",  // Local file
+      type: "sandbox",
+      
+      platform: {
+        web: "http://localhost:3000"
+      },
+      
+      features: {
+        signMessage: true,
+        signInWithoutAddKey: true,
+        signAndSendTransaction: true,
+        signAndSendTransactions: true,
+        mainnet: true,
+        testnet: true
+      },
+      
+      permissions: {
+        storage: true,
+        allowsOpen: ["http://localhost:3000", "https://example.com"]
+      },
+      
+      debug: true  // Enable verbose logging
+    });
+    ```
+  </Step>
+  
+  <Step title="Test Your Wallet">
+    Your debug wallet will now appear in the wallet selector. Click it to test.
+  </Step>
+</Steps>
+
+### Debug Wallet Persistence
+
+Debug wallets are saved to localStorage and persist across page reloads:
+
+```javascript
+// List all debug wallets
+const debugWallets = await connector.getDebugWallets();
+console.log(debugWallets);
+
+// Remove a debug wallet
+await connector.removeDebugWallet("my-test-wallet");
+
+// Remove all debug wallets
+await connector.clearDebugWallets();
+```
+
+## Local Development Setup
+
+### Option 1: Local Web Server
+
+Serve your executor script from a local development server:
+
+<CodeGroup>
+```bash Python Simple Server
+# Serve current directory on port 8000
+python3 -m http.server 8000
+
+# Your executor will be available at:
+# http://localhost:8000/wallet-executor.js
+```
+
+```bash Node.js http-server
+# Install http-server globally
+npm install -g http-server
+
+# Serve current directory
+http-server -p 8000
+
+# Your executor will be available at:
+# http://localhost:8000/wallet-executor.js
+```
+
+```bash Vite Dev Server
+# If using Vite
+npm run dev
+
+# Your executor will be available at:
+# http://localhost:5173/wallet-executor.js
+```
+</CodeGroup>
+
+Register your debug wallet with the local URL:
+
+```javascript
+await connector.registerDebugWallet({
+  // ... other fields
+  executor: "http://localhost:8000/wallet-executor.js",
+  permissions: {
+    allowsOpen: ["http://localhost:8000"]
+  }
+});
+```
+
+### Option 2: Data URI
+
+For quick testing, embed your executor code directly:
+
+```javascript
+const executorCode = `
+  async function signIn({ network }) {
+    console.log('Test signIn called', network);
+    return [{ accountId: 'test.near', publicKey: 'ed25519:123...' }];
+  }
+  
+  async function signOut() {
+    console.log('Test signOut called');
+  }
+  
+  async function getAccounts({ network }) {
+    return [{ accountId: 'test.near', publicKey: 'ed25519:123...' }];
+  }
+  
+  async function signAndSendTransaction(params) {
+    console.log('Test transaction', params);
+    throw new Error('Not implemented in test wallet');
+  }
+  
+  async function signAndSendTransactions(params) {
+    console.log('Test transactions', params);
+    throw new Error('Not implemented in test wallet');
+  }
+  
+  async function signMessage(params) {
+    console.log('Test sign message', params);
+    throw new Error('Not implemented in test wallet');
+  }
+  
+  window.wallet = {
+    signIn,
+    signOut,
+    getAccounts,
+    signAndSendTransaction,
+    signAndSendTransactions,
+    signMessage
+  };
+`;
+
+const dataUri = 'data:text/javascript;base64,' + btoa(executorCode);
+
+await connector.registerDebugWallet({
+  // ... other fields
+  executor: dataUri
+});
+```
+
+## Console Logging
+
+Enable detailed logging to see what's happening:
+
+```javascript
+const connector = new NearConnector({
+  network: "testnet",
+  logger: {
+    log: (...args) => {
+      console.log('[NEAR Connect]', ...args);
+    }
+  }
+});
+```
+
+With logging enabled, you'll see:
+
+```
+[NEAR Connect] Calling method signIn { network: 'testnet' }
+[NEAR Connect] Code loaded from cache true
+[NEAR Connect] Code loaded, preparing
+[NEAR Connect] Code loaded, iframe initialized
+[NEAR Connect] Iframe ready
+[NEAR Connect] postMessage { result: {...}, request: {...} }
+```
+
+## Testing Checklist
+
+Use this checklist to ensure your wallet works correctly:
+
+<AccordionGroup>
+  <Accordion title="1. Manifest Validation">
+    - [ ] All required fields present (`id`, `name`, `icon`, etc.)
+    - [ ] `id` is unique and lowercase with hyphens
+    - [ ] `type` is either `"sandbox"` or `"injected"`
+    - [ ] `executor` URL is accessible (for sandbox wallets)
+    - [ ] Icon image loads correctly
+    - [ ] Features accurately reflect wallet capabilities
+    - [ ] Permissions include only what's needed
+    - [ ] Platform URLs are valid
+  </Accordion>
+  
+  <Accordion title="2. Sign In Flow">
+    - [ ] `signIn()` opens wallet UI correctly
+    - [ ] User can authenticate
+    - [ ] Returns array of accounts with `accountId` and optional `publicKey`
+    - [ ] Accounts are persisted in storage
+    - [ ] Subsequent `getAccounts()` calls return signed-in accounts
+    - [ ] Works on both mainnet and testnet (if supported)
+    - [ ] Handles user rejection gracefully
+    - [ ] Timeout works (if implemented)
+  </Accordion>
+  
+  <Accordion title="3. Sign Out Flow">
+    - [ ] `signOut()` clears stored accounts
+    - [ ] `getAccounts()` returns empty array after sign out
+    - [ ] Works for both mainnet and testnet
+  </Accordion>
+  
+  <Accordion title="4. Transaction Signing">
+    - [ ] `signAndSendTransaction()` shows transaction details
+    - [ ] User can approve or reject transaction
+    - [ ] Approved transaction is sent to network
+    - [ ] Returns valid `FinalExecutionOutcome`
+    - [ ] Handles different action types (FunctionCall, Transfer, etc.)
+    - [ ] Gas and deposit amounts are correct
+    - [ ] Network errors are handled properly
+    - [ ] User rejection is handled gracefully
+  </Accordion>
+  
+  <Accordion title="5. Batch Transactions">
+    - [ ] `signAndSendTransactions()` shows all transactions
+    - [ ] User can review each transaction
+    - [ ] All transactions are sent in order
+    - [ ] Returns array of `FinalExecutionOutcome`
+    - [ ] Handles partial failures appropriately
+  </Accordion>
+  
+  <Accordion title="6. Message Signing">
+    - [ ] `signMessage()` shows message content clearly
+    - [ ] User can approve or reject
+    - [ ] Returns valid signature
+    - [ ] Signature can be verified on-chain
+    - [ ] `recipient` and `nonce` are used correctly
+  </Accordion>
+  
+  <Accordion title="7. Storage">
+    - [ ] Data persists across page reloads
+    - [ ] Storage is isolated per wallet ID
+    - [ ] Large data (>5MB) handled appropriately
+    - [ ] Storage cleanup on sign out
+  </Accordion>
+  
+  <Accordion title="8. Popup/Window Management">
+    - [ ] Popups open without being blocked
+    - [ ] Deep links work on mobile
+    - [ ] Window closing is detected
+    - [ ] Message passing works between windows
+    - [ ] URLs match `allowsOpen` permissions
+  </Accordion>
+  
+  <Accordion title="9. Error Handling">
+    - [ ] Network errors show helpful messages
+    - [ ] User rejection doesn't crash
+    - [ ] Timeouts are handled
+    - [ ] Invalid parameters are validated
+    - [ ] Errors are logged for debugging
+  </Accordion>
+  
+  <Accordion title="10. Cross-Platform">
+    - [ ] Works in Chrome
+    - [ ] Works in Firefox
+    - [ ] Works in Safari
+    - [ ] Works on mobile (if applicable)
+    - [ ] Works on different screen sizes
+  </Accordion>
+</AccordionGroup>
+
+## Testing Scenarios
+
+### Test Sign In
+
+```javascript
+// Test basic sign in
+const wallet = connector.wallets.find(w => w.manifest.id === 'my-test-wallet');
+
+try {
+  const accounts = await wallet.signIn({
+    network: 'testnet',
+    contractId: 'test.near',
+    methodNames: ['method1', 'method2']
+  });
+  
+  console.log('✓ Sign in successful:', accounts);
+  
+  // Verify accounts structure
+  accounts.forEach(account => {
+    if (!account.accountId) {
+      console.error('✗ Account missing accountId:', account);
+    }
+  });
+} catch (error) {
+  console.error('✗ Sign in failed:', error);
+}
+```
+
+### Test Transaction Signing
+
+```javascript
+const wallet = connector.wallets.find(w => w.manifest.id === 'my-test-wallet');
+
+try {
+  const result = await wallet.signAndSendTransaction({
+    signerId: 'test.near',
+    receiverId: 'contract.near',
+    actions: [
+      {
+        type: 'FunctionCall',
+        params: {
+          methodName: 'test_method',
+          args: { message: 'Hello' },
+          gas: '30000000000000',
+          deposit: '0'
+        }
+      }
+    ],
+    network: 'testnet'
+  });
+  
+  console.log('✓ Transaction successful:', result);
+  
+  // Verify result structure
+  if (!result.transaction?.hash) {
+    console.error('✗ Result missing transaction hash');
+  }
+  if (!result.status) {
+    console.error('✗ Result missing status');
+  }
+} catch (error) {
+  console.error('✗ Transaction failed:', error);
+}
+```
+
+### Test Message Signing
+
+```javascript
+const wallet = connector.wallets.find(w => w.manifest.id === 'my-test-wallet');
+
+try {
+  const nonce = new Uint8Array(32);
+  crypto.getRandomValues(nonce);
+  
+  const signedMessage = await wallet.signMessage({
+    signerId: 'test.near',
+    message: 'Test message',
+    recipient: 'app.near',
+    nonce: nonce,
+    network: 'testnet'
+  });
+  
+  console.log('✓ Message signed:', signedMessage);
+  
+  // Verify signature structure
+  if (!signedMessage.accountId || !signedMessage.publicKey || !signedMessage.signature) {
+    console.error('✗ Signed message missing required fields');
+  }
+} catch (error) {
+  console.error('✗ Message signing failed:', error);
+}
+```
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Wallet Doesn't Appear in Selector">
+    **Possible causes:**
+    
+    1. Manifest validation failed
+    2. `type` field is missing or invalid
+    3. Features don't match connector's filter
+    4. Network mismatch (wallet doesn't support current network)
+    
+    **Solution:**
+    
+    ```javascript
+    // Check if wallet is registered
+    console.log('All wallets:', connector.wallets);
+    
+    // Check available wallets (after filtering)
+    console.log('Available wallets:', connector.availableWallets);
+    
+    // Check for errors
+    connector.events.on('selector:walletsChanged', () => {
+      console.log('Wallets changed');
+    });
+    ```
+  </Accordion>
+  
+  <Accordion title="Executor Script Fails to Load">
+    **Possible causes:**
+    
+    1. CORS issues (executor URL not accessible)
+    2. 404 error (file not found)
+    3. JavaScript syntax error in executor
+    
+    **Solution:**
+    
+    ```javascript
+    // Check if executor loads
+    const response = await fetch('http://localhost:8000/wallet-executor.js');
+    if (!response.ok) {
+      console.error('Executor fetch failed:', response.status);
+    }
+    const code = await response.text();
+    console.log('Executor code:', code);
+    
+    // Check for CORS headers
+    console.log('CORS headers:', response.headers.get('access-control-allow-origin'));
+    ```
+    
+    Enable CORS on your local server:
+    
+    ```bash
+    # Python
+    python3 -m http.server 8000 --bind 0.0.0.0
+    
+    # Or use a CORS proxy
+    npx http-server -p 8000 --cors
+    ```
+  </Accordion>
+  
+  <Accordion title="Storage Doesn't Persist">
+    **Possible causes:**
+    
+    1. `storage` permission not granted
+    2. Using incorrect storage key
+    3. Browser private/incognito mode
+    
+    **Solution:**
+    
+    ```javascript
+    // Verify storage permission
+    console.log('Storage permission:', manifest.permissions.storage);
+    
+    // Test storage directly
+    await window.selector.storage.set('test-key', 'test-value');
+    const value = await window.selector.storage.get('test-key');
+    console.log('Storage test:', value === 'test-value' ? 'OK' : 'FAILED');
+    
+    // Check localStorage directly
+    console.log('LocalStorage keys:', Object.keys(localStorage));
+    ```
+  </Accordion>
+  
+  <Accordion title="Popup Gets Blocked">
+    **Possible causes:**
+    
+    1. Opening popup not triggered by user action
+    2. Browser popup blocker
+    3. Timing issue (opening too late after user click)
+    
+    **Solution:**
+    
+    ```javascript
+    // Open popup immediately in response to user action
+    async function signIn(params) {
+      // Open immediately (don't await anything first)
+      const windowId = await window.selector.open(url);
+      
+      if (!windowId) {
+        // Popup was blocked
+        alert('Please allow popups for this site');
+        return;
+      }
+      
+      // Now wait for response
+      return await waitForResponse();
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="postMessage Not Received">
+    **Possible causes:**
+    
+    1. Origin mismatch in event listener
+    2. Wrong event type
+    3. Message sent before listener attached
+    
+    **Solution:**
+    
+    ```javascript
+    // Add message listener early
+    window.addEventListener('message', (event) => {
+      console.log('Message received:', {
+        origin: event.origin,
+        data: event.data
+      });
+      
+      // Don't check origin too strictly in development
+      if (event.data?.requestId === expectedId) {
+        handleResponse(event.data);
+      }
+    });
+    
+    // Debug: Log all messages
+    window.addEventListener('message', console.log);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Browser DevTools
+
+### Network Tab
+
+Monitor network requests to debug executor loading:
+
+1. Open DevTools → Network tab
+2. Filter by `JS`
+3. Look for your executor URL
+4. Check status code (should be 200)
+5. Check response content
+
+### Console Tab
+
+Monitor console logs:
+
+```javascript
+// In your executor
+console.log('[Wallet]', 'Sign in called', params);
+console.log('[Wallet]', 'Opening URL:', url);
+console.log('[Wallet]', 'Response received:', response);
+
+// In NEAR Connect (with logger enabled)
+const connector = new NearConnector({
+  logger: console
+});
+```
+
+### Application Tab
+
+Inspect localStorage:
+
+1. Open DevTools → Application tab
+2. Storage → Local Storage
+3. Look for keys starting with your wallet ID
+4. Verify stored data format
+
+## Test Suite Template
+
+Create automated tests for your wallet:
+
+```javascript test-wallet.js
+class WalletTester {
+  constructor(walletId) {
+    this.walletId = walletId;
+    this.results = [];
+  }
+  
+  async run() {
+    console.log(`Testing wallet: ${this.walletId}\n`);
+    
+    await this.test('Sign In', this.testSignIn.bind(this));
+    await this.test('Get Accounts', this.testGetAccounts.bind(this));
+    await this.test('Sign Transaction', this.testSignTransaction.bind(this));
+    await this.test('Sign Message', this.testSignMessage.bind(this));
+    await this.test('Sign Out', this.testSignOut.bind(this));
+    
+    this.printResults();
+  }
+  
+  async test(name, fn) {
+    try {
+      await fn();
+      this.results.push({ name, status: 'PASS' });
+      console.log(`✓ ${name}`);
+    } catch (error) {
+      this.results.push({ name, status: 'FAIL', error: error.message });
+      console.error(`✗ ${name}:`, error.message);
+    }
+  }
+  
+  async testSignIn() {
+    const wallet = connector.wallets.find(w => w.manifest.id === this.walletId);
+    const accounts = await wallet.signIn({ network: 'testnet' });
+    
+    if (!Array.isArray(accounts)) {
+      throw new Error('signIn should return an array');
+    }
+    if (accounts.length === 0) {
+      throw new Error('signIn returned no accounts');
+    }
+    if (!accounts[0].accountId) {
+      throw new Error('Account missing accountId');
+    }
+  }
+  
+  async testGetAccounts() {
+    const wallet = connector.wallets.find(w => w.manifest.id === this.walletId);
+    const accounts = await wallet.getAccounts({ network: 'testnet' });
+    
+    if (!Array.isArray(accounts)) {
+      throw new Error('getAccounts should return an array');
+    }
+  }
+  
+  async testSignTransaction() {
+    const wallet = connector.wallets.find(w => w.manifest.id === this.walletId);
+    
+    const result = await wallet.signAndSendTransaction({
+      signerId: 'test.near',
+      receiverId: 'test.near',
+      actions: [
+        {
+          type: 'FunctionCall',
+          params: {
+            methodName: 'test',
+            args: {},
+            gas: '30000000000000',
+            deposit: '0'
+          }
+        }
+      ],
+      network: 'testnet'
+    });
+    
+    if (!result.transaction?.hash) {
+      throw new Error('Transaction result missing hash');
+    }
+  }
+  
+  async testSignMessage() {
+    const wallet = connector.wallets.find(w => w.manifest.id === this.walletId);
+    
+    const nonce = new Uint8Array(32);
+    crypto.getRandomValues(nonce);
+    
+    const result = await wallet.signMessage({
+      signerId: 'test.near',
+      message: 'Test',
+      recipient: 'app.near',
+      nonce,
+      network: 'testnet'
+    });
+    
+    if (!result.signature) {
+      throw new Error('signMessage result missing signature');
+    }
+  }
+  
+  async testSignOut() {
+    const wallet = connector.wallets.find(w => w.manifest.id === this.walletId);
+    await wallet.signOut({ network: 'testnet' });
+    
+    const accounts = await wallet.getAccounts({ network: 'testnet' });
+    if (accounts.length > 0) {
+      throw new Error('Accounts still present after sign out');
+    }
+  }
+  
+  printResults() {
+    console.log('\n--- Test Results ---');
+    const passed = this.results.filter(r => r.status === 'PASS').length;
+    const failed = this.results.filter(r => r.status === 'FAIL').length;
+    console.log(`Passed: ${passed}/${this.results.length}`);
+    console.log(`Failed: ${failed}/${this.results.length}`);
+  }
+}
+
+// Run tests
+const tester = new WalletTester('my-test-wallet');
+await tester.run();
+```
+
+## Publishing Your Wallet
+
+Once testing is complete:
+
+<Steps>
+  <Step title="Remove Debug Flag">
+    Remove `debug: true` from your manifest.
+  </Step>
+  
+  <Step title="Publish Executor">
+    Host your executor script on a permanent URL (GitHub, CDN, etc.).
+  </Step>
+  
+  <Step title="Update Manifest">
+    Update `executor` URL to point to published script.
+  </Step>
+  
+  <Step title="Submit Pull Request">
+    Submit your wallet manifest to the official repository:
+    
+    ```bash
+    git clone https://github.com/hot-dao/near-selector
+    cd near-selector/repository
+    # Add your wallet to manifest.json
+    # Submit PR
+    ```
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Manifest Reference" icon="book" href="/wallet-integration/manifest-format">
+    Review manifest.json format
+  </Card>
+  
+  <Card title="Sandbox API" icon="window" href="/wallet-integration/sandbox-api">
+    Explore available APIs
+  </Card>
+  
+  <Card title="Integration Overview" icon="map" href="/wallet-integration/overview">
+    Back to integration overview
+  </Card>
+</CardGroup>

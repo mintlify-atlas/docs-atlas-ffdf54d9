@@ -1,0 +1,336 @@
+---
+title: 'dApp Integration'
+description: 'Complete guide for integrating NEAR Connect into your decentralized application'
+---
+
+## Overview
+
+NEAR Connect is a secure, zero-dependency wallet connector for the NEAR blockchain. This guide will walk you through the complete integration process, from installation to advanced configuration.
+
+## Installation
+
+<Steps>
+  <Step title="Install the package">
+    Install NEAR Connect using your preferred package manager:
+
+    <CodeGroup>
+      ```bash npm
+      npm install @hot-labs/near-connect
+      ```
+
+      ```bash yarn
+      yarn add @hot-labs/near-connect
+      ```
+
+      ```bash pnpm
+      pnpm add @hot-labs/near-connect
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Import and initialize">
+    Import the `NearConnector` class and create a new instance:
+
+    ```typescript
+    import { NearConnector } from "@hot-labs/near-connect";
+
+    const connector = new NearConnector({
+      network: "mainnet", // or "testnet"
+      autoConnect: true,
+    });
+    ```
+  </Step>
+
+  <Step title="Set up event listeners">
+    Listen for wallet connection events:
+
+    ```typescript
+    connector.on("wallet:signIn", async (event) => {
+      const wallet = await connector.wallet();
+      const accountId = event.accounts[0].accountId;
+      console.log(`Connected: ${accountId}`);
+    });
+
+    connector.on("wallet:signOut", async () => {
+      console.log("Disconnected");
+    });
+    ```
+  </Step>
+
+  <Step title="Connect a wallet">
+    Trigger the wallet connection flow:
+
+    ```typescript
+    // Opens wallet selector popup
+    await connector.connect();
+    ```
+  </Step>
+</Steps>
+
+## Basic Configuration
+
+### Network Selection
+
+You can specify which network your dApp should connect to:
+
+```typescript
+const connector = new NearConnector({
+  network: "mainnet", // or "testnet"
+});
+```
+
+<Tip>
+Most production applications use `"mainnet"`, while `"testnet"` is ideal for development and testing.
+</Tip>
+
+### Custom RPC Providers
+
+Specify custom RPC endpoints for improved performance or reliability:
+
+```typescript
+const connector = new NearConnector({
+  providers: {
+    mainnet: ["https://rpc.mainnet.near.org"],
+    testnet: ["https://rpc.testnet.near.org"],
+  },
+});
+```
+
+### Auto-Connect Behavior
+
+Control whether the connector automatically reconnects on page load:
+
+```typescript
+const connector = new NearConnector({
+  autoConnect: true, // Default: true
+});
+```
+
+<Note>
+When `autoConnect` is `true`, the connector will automatically restore the user's previous wallet connection on page load.
+</Note>
+
+## Advanced Configuration
+
+### Filtering Wallets by Features
+
+You can filter available wallets based on required features:
+
+```typescript
+const connector = new NearConnector({
+  features: {
+    signMessage: true,        // Only show wallets that support message signing
+    testnet: true,            // Only show wallets with testnet support
+    signInAndSignMessage: true, // Only show wallets with combined sign-in
+  },
+});
+```
+
+### Excluding Specific Wallets
+
+Exclude certain wallets from the selection popup:
+
+```typescript
+const connector = new NearConnector({
+  excludedWallets: ["wallet-id-1", "wallet-id-2"],
+});
+```
+
+<Warning>
+The `"hot-wallet"` is always included and cannot be excluded.
+</Warning>
+
+### Custom Branding
+
+Customize the footer branding in the wallet selector popup:
+
+```typescript
+const connector = new NearConnector({
+  footerBranding: {
+    icon: "https://example.com/logo.png",
+    heading: "My dApp",
+    link: "https://example.com",
+    linkText: "Learn more",
+  },
+});
+
+// Or hide the footer entirely
+const connectorNoFooter = new NearConnector({
+  footerBranding: null,
+});
+```
+
+### Custom Logging
+
+Implement custom logging for debugging:
+
+```typescript
+const connector = new NearConnector({
+  logger: {
+    log: (...args) => console.log("[NEAR]", ...args),
+  },
+});
+```
+
+## Complete Example
+
+Here's a complete React integration example:
+
+<CodeGroup>
+```tsx React
+import { FC, useState, useEffect } from "react";
+import { NearConnector, NearWalletBase } from "@hot-labs/near-connect";
+
+export const App: FC = () => {
+  const [connector] = useState(() => new NearConnector({
+    network: "mainnet",
+    autoConnect: true,
+  }));
+  
+  const [account, setAccount] = useState<string | undefined>();
+  const [wallet, setWallet] = useState<NearWalletBase | undefined>();
+
+  useEffect(() => {
+    // Listen for sign in
+    connector.on("wallet:signIn", async (event) => {
+      setWallet(await connector.wallet());
+      setAccount(event.accounts[0].accountId);
+    });
+
+    // Listen for sign out
+    connector.on("wallet:signOut", () => {
+      setWallet(undefined);
+      setAccount(undefined);
+    });
+
+    // Check for existing connection
+    connector.getConnectedWallet().then(({ wallet, accounts }) => {
+      setWallet(wallet);
+      setAccount(accounts[0].accountId);
+    }).catch(() => {
+      // Not connected
+    });
+  }, [connector]);
+
+  const handleConnect = async () => {
+    if (account) {
+      await connector.disconnect();
+    } else {
+      await connector.connect();
+    }
+  };
+
+  return (
+    <div>
+      <button onClick={handleConnect}>
+        {account ? `Disconnect ${account}` : "Connect Wallet"}
+      </button>
+      
+      {wallet && account && (
+        <div>
+          <p>Connected as: {account}</p>
+          {/* Your dApp UI here */}
+        </div>
+      )}
+    </div>
+  );
+};
+```
+
+```typescript Vanilla JS
+import { NearConnector } from "@hot-labs/near-connect";
+
+const connector = new NearConnector({
+  network: "mainnet",
+  autoConnect: true,
+});
+
+let currentAccount = null;
+let currentWallet = null;
+
+// Set up event listeners
+connector.on("wallet:signIn", async (event) => {
+  currentWallet = await connector.wallet();
+  currentAccount = event.accounts[0].accountId;
+  updateUI();
+});
+
+connector.on("wallet:signOut", () => {
+  currentWallet = null;
+  currentAccount = null;
+  updateUI();
+});
+
+// Connect button handler
+document.getElementById("connect-btn").addEventListener("click", async () => {
+  if (currentAccount) {
+    await connector.disconnect();
+  } else {
+    await connector.connect();
+  }
+});
+
+// Update UI
+function updateUI() {
+  const btn = document.getElementById("connect-btn");
+  btn.textContent = currentAccount 
+    ? `Disconnect ${currentAccount}` 
+    : "Connect Wallet";
+}
+
+// Check for existing connection
+connector.getConnectedWallet().then(({ wallet, accounts }) => {
+  currentWallet = wallet;
+  currentAccount = accounts[0].accountId;
+  updateUI();
+}).catch(() => {
+  // Not connected
+});
+```
+</CodeGroup>
+
+## Available Methods
+
+### Connection Methods
+
+| Method | Description |
+|--------|-------------|
+| `connect(options?)` | Opens wallet selector and connects to chosen wallet |
+| `disconnect(wallet?)` | Disconnects from the current or specified wallet |
+| `getConnectedWallet()` | Returns the currently connected wallet and accounts |
+| `wallet(id?)` | Gets a wallet instance by ID or returns connected wallet |
+
+### Utility Methods
+
+| Method | Description |
+|--------|-------------|
+| `switchNetwork(network, signInData?)` | Switches between mainnet and testnet |
+| `selectWallet(options?)` | Opens wallet selector without connecting |
+| `use(plugin)` | Applies a plugin to extend wallet functionality |
+
+## Event Handling
+
+NEAR Connect emits several events you can listen to. See the [Event Handling guide](/guides/event-handling) for complete documentation.
+
+```typescript
+connector.on("wallet:signIn", (event) => { /* ... */ });
+connector.on("wallet:signOut", (event) => { /* ... */ });
+connector.on("wallet:signInAndSignMessage", (event) => { /* ... */ });
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Sign In Users" icon="arrow-right-to-bracket" href="/guides/sign-in">
+    Learn about different sign-in methods and options
+  </Card>
+  <Card title="Sign Transactions" icon="signature" href="/guides/sign-transactions">
+    Send transactions and interact with smart contracts
+  </Card>
+  <Card title="Sign Messages" icon="message" href="/guides/sign-messages">
+    Sign arbitrary messages for verification
+  </Card>
+  <Card title="Event Handling" icon="bolt" href="/guides/event-handling">
+    Handle wallet events in your application
+  </Card>
+</CardGroup>
